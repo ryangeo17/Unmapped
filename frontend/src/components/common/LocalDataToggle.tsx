@@ -79,8 +79,8 @@ export default function LocalDataToggle() {
           </div>
 
           <p className="border-t border-gray-200 pt-2 text-xs text-gray-500">
-            Surface polygons cover the Decker Quad area only. Buildings, pathways
-            and entryways are campus-wide.
+            Surface polygons cover the Decker Quad area only and appear once you
+            zoom in. Buildings, pathways and entryways are campus-wide.
           </p>
         </div>
       )}

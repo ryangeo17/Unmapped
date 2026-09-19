@@ -3,6 +3,9 @@ import type { FeatureCollection } from 'geojson'
 import { useCampusData } from '../../hooks/useCampusData'
 import { ACCESS_COLORS, SURFACE_COLORS } from '../../lib/campusData'
 
+// Below this the exported surface area shows its rectangular edge.
+const SURFACE_MINZOOM = 17
+
 type SourceBlockProps = {
   id: string
   data: FeatureCollection | undefined
@@ -39,10 +42,14 @@ export default function CampusOverlay() {
         paint={{ 'background-color': '#ffffff', 'background-opacity': 0.6 }}
       />
 
-      {/* ---- Surfaces (Decker Quad area) ---- */}
+      {/* ---- Surfaces (Decker Quad area) ----
+          These only cover one neighbourhood, so below SURFACE_MINZOOM the
+          edge of the exported area is visible as a rectangle. Hold them back
+          until the viewport is inside it. */}
       <SourceBlock id="src-campus-area" data={data.campusArea}>
         <Layer
           id="campus-area"
+          minzoom={SURFACE_MINZOOM}
           type="fill"
           paint={{ 'fill-color': SURFACE_COLORS.campusArea, 'fill-opacity': 0.9 }}
         />
@@ -51,6 +58,7 @@ export default function CampusOverlay() {
       <SourceBlock id="src-vegetation" data={data.vegetation}>
         <Layer
           id="vegetation"
+          minzoom={SURFACE_MINZOOM}
           type="fill"
           paint={{
             'fill-color': [
@@ -69,6 +77,7 @@ export default function CampusOverlay() {
       <SourceBlock id="src-road" data={data.roadArea}>
         <Layer
           id="road-area"
+          minzoom={SURFACE_MINZOOM}
           type="fill"
           paint={{ 'fill-color': SURFACE_COLORS.road, 'fill-opacity': 0.35 }}
         />
@@ -77,6 +86,7 @@ export default function CampusOverlay() {
       <SourceBlock id="src-sidewalk" data={data.sidewalk}>
         <Layer
           id="sidewalk"
+          minzoom={SURFACE_MINZOOM}
           type="fill"
           paint={{
             'fill-color': [
@@ -93,6 +103,7 @@ export default function CampusOverlay() {
       <SourceBlock id="src-ramp" data={data.sidewalkRamp}>
         <Layer
           id="sidewalk-ramp"
+          minzoom={SURFACE_MINZOOM}
           type="fill"
           paint={{ 'fill-color': SURFACE_COLORS.ramp, 'fill-outline-color': '#b45309' }}
         />
@@ -102,11 +113,13 @@ export default function CampusOverlay() {
       <SourceBlock id="src-stairs" data={data.stairs}>
         <Layer
           id="stairs-fill"
+          minzoom={SURFACE_MINZOOM}
           type="fill"
           paint={{ 'fill-color': SURFACE_COLORS.stairs, 'fill-opacity': 0.95 }}
         />
         <Layer
           id="stairs-outline"
+          minzoom={SURFACE_MINZOOM}
           type="line"
           paint={{ 'line-color': '#b91c1c', 'line-width': 1.2 }}
         />
@@ -129,6 +142,7 @@ export default function CampusOverlay() {
           type="symbol"
           layout={{
             'text-field': ['get', 'name'],
+            'text-font': ['Noto Sans Regular'],
             'text-size': 11,
             'text-transform': 'uppercase',
             'text-letter-spacing': 0.08,
@@ -154,7 +168,12 @@ export default function CampusOverlay() {
           id="facilities-label"
           type="symbol"
           minzoom={16}
-          layout={{ 'text-field': ['get', 'name'], 'text-size': 11, 'text-max-width': 8 }}
+          layout={{
+            'text-field': ['get', 'name'],
+            'text-font': ['Noto Sans Regular'],
+            'text-size': 11,
+            'text-max-width': 8,
+          }}
           paint={{ 'text-color': '#1e293b', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }}
         />
       </SourceBlock>
