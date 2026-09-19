@@ -4,3 +4,7 @@ CLAUDE.md
 __pycache__/
 *.pyc
 graph_cache.json
+.env
+.env.*
+!.env.example
+.venv/

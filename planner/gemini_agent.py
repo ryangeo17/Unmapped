@@ -39,10 +39,14 @@ def tools():
     return [types.Tool(function_declarations=declarations())]
 
 
-def ask(question, model=MODEL):
+def ask(question, model=MODEL, client=None):
     """Returns (answer_text, routes) — routes are the raw planner results, to
-    be handed to the frontend untouched."""
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    be handed to the frontend untouched.
+
+    `client` is injectable so the loop can be tested without a key or a
+    network call; see tests/test_agent.py.
+    """
+    client = client or genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     config = types.GenerateContentConfig(
         system_instruction=system_prompt(),
         tools=tools(),

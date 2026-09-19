@@ -51,9 +51,18 @@ and not a per-request cost. Rerun after the campus data changes:
 
 ## Give it to a model
 
-    pip install google-genai
-    export GEMINI_API_KEY=...
-    python3 -m planner.gemini_agent "quickest way from Malone to the garage"
+    python3 -m venv .venv
+    .venv/bin/pip install google-genai
+    echo 'GEMINI_API_KEY=your-key' >> .env        # .env is gitignored
+    .venv/bin/python -m planner.gemini_agent "quickest way from Malone to the garage"
+
+A key comes from https://aistudio.google.com/apikey. Keep it out of your shell
+history and out of commits: `.env` and `.venv/` are both ignored, and
+`.env.example` shows the shape.
+
+Test the loop without a key or a bill with `python3 -m unittest discover
+tests` (a stubbed client), and the real round trip with
+`.venv/bin/python tests/live_gemini.py`.
 
 The model gets `tool_schema.json` and `SKILL.md`, and the place index when it
 asks. It never receives the graph or the campus GeoJSON: it resolves the place
