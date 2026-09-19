@@ -1,8 +1,18 @@
+import { MapProvider } from 'react-map-gl/maplibre'
+import MapView from './components/map/MapView'
+
 function App() {
   return (
-    <main className="flex h-screen items-center justify-center">
-      <h1 className="text-3xl font-bold text-blue-600">Unmapped</h1>
-    </main>
+    <MapProvider>
+      <div className="flex h-screen overflow-hidden">
+        <aside className="w-[380px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white p-4">
+          <h1 className="text-2xl font-bold text-blue-600">Unmapped</h1>
+        </aside>
+        <main className="relative flex-1">
+          <MapView />
+        </main>
+      </div>
+    </MapProvider>
   )
 }
 
