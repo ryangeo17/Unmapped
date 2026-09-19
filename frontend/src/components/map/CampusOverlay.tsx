@@ -43,18 +43,15 @@ export default function CampusOverlay() {
       />
 
       {/* ---- Surfaces (Decker Quad area) ----
-          These only cover one neighbourhood, so below SURFACE_MINZOOM the
-          edge of the exported area is visible as a rectangle. Hold them back
-          until the viewport is inside it. */}
-      <SourceBlock id="src-campus-area" data={data.campusArea}>
-        <Layer
-          id="campus-area"
-          minzoom={SURFACE_MINZOOM}
-          type="fill"
-          paint={{ 'fill-color': SURFACE_COLORS.campusArea, 'fill-opacity': 0.9 }}
-        />
-      </SourceBlock>
+          These only cover one neighbourhood, so below SURFACE_MINZOOM the edge
+          of the exported area shows as a rectangle. Hold them back until the
+          viewport is inside it.
 
+          Campus_Area is exported but deliberately not drawn: it is one large
+          green slab, so where the export ends it draws a hard line across the
+          map that reads as a bug. Everything else here is small discrete
+          shapes whose edge is not noticeable, and the basemap already gives
+          campus a green base. */}
       <SourceBlock id="src-vegetation" data={data.vegetation}>
         <Layer
           id="vegetation"

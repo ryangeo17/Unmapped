@@ -1,0 +1,121 @@
+[
+  {
+    "trip": "malone-to-clark",
+    "mode": "walking",
+    "modeLabel": "Walking",
+    "from": "Malone Hall North",
+    "to": "Clark Hall Main",
+    "snapStart_m": 0.6,
+    "snapGoal_m": 0.3,
+    "status": "ok",
+    "minutes": 1.9,
+    "metres": 149.0,
+    "feet": 489,
+    "stairSegments": 1,
+    "risers": 3,
+    "fullyCompliantShare": 0.933,
+    "grades": {
+      "FullyCompliant": 15,
+      "NonCompliant": 3
+    }
+  },
+  {
+    "trip": "malone-to-clark",
+    "mode": "partial",
+    "modeLabel": "Partially accessible",
+    "from": "Malone Hall North",
+    "to": "Clark Hall Main",
+    "snapStart_m": 0.6,
+    "snapGoal_m": 0.3,
+    "status": "ok",
+    "minutes": 2.29,
+    "metres": 181.0,
+    "feet": 594,
+    "stairSegments": 0,
+    "risers": 0,
+    "fullyCompliantShare": 1.0,
+    "grades": {
+      "FullyCompliant": 22
+    }
+  },
+  {
+    "trip": "malone-to-clark",
+    "mode": "accessible",
+    "modeLabel": "Fully accessible",
+    "from": "Malone Hall North",
+    "to": "Clark Hall Main",
+    "snapStart_m": 0.6,
+    "snapGoal_m": 0.3,
+    "status": "ok",
+    "minutes": 2.29,
+    "metres": 181.0,
+    "feet": 594,
+    "stairSegments": 0,
+    "risers": 0,
+    "fullyCompliantShare": 1.0,
+    "grades": {
+      "FullyCompliant": 22
+    }
+  },
+  {
+    "trip": "malone-to-san-martin-garage",
+    "mode": "walking",
+    "modeLabel": "Walking",
+    "from": "Malone Hall North",
+    "to": "San Martin Garage (building centre)",
+    "snapStart_m": 0.6,
+    "snapGoal_m": 7.6,
+    "status": "ok",
+    "minutes": 10.37,
+    "metres": 816.2,
+    "feet": 2678,
+    "stairSegments": 4,
+    "risers": 48,
+    "fullyCompliantShare": 0.497,
+    "grades": {
+      "FullyCompliant": 53,
+      "PartiallyCompliant": 51,
+      "NonCompliant": 8
+    }
+  },
+  {
+    "trip": "malone-to-san-martin-garage",
+    "mode": "partial",
+    "modeLabel": "Partially accessible",
+    "from": "Malone Hall North",
+    "to": "San Martin Garage (building centre)",
+    "snapStart_m": 0.6,
+    "snapGoal_m": 7.6,
+    "status": "ok",
+    "minutes": 10.5,
+    "metres": 825.1,
+    "feet": 2707,
+    "stairSegments": 0,
+    "risers": 0,
+    "fullyCompliantShare": 0.59,
+    "grades": {
+      "FullyCompliant": 60,
+      "PartiallyCompliant": 45
+    }
+  },
+  {
+    "trip": "malone-to-san-martin-garage",
+    "mode": "accessible",
+    "modeLabel": "Fully accessible",
+    "from": "Malone Hall North",
+    "to": "San Martin Garage (building centre)",
+    "snapStart_m": 0.6,
+    "snapGoal_m": 7.6,
+    "status": "ok",
+    "minutes": 11.05,
+    "metres": 869.5,
+    "feet": 2853,
+    "stairSegments": 0,
+    "risers": 0,
+    "fullyCompliantShare": 0.71,
+    "grades": {
+      "FullyCompliant": 73,
+      "PartiallyCompliant": 37
+    }
+  }
+]
