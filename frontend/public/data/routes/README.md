@@ -1,14 +1,21 @@
 # Example routes
 
-Two trips, three modes each, solved by `scripts/route_examples.py` against the
-graph built from `Pathways.geojson`. Regenerate with:
+Two trips, four profiles each, solved by the `planner` package.
+`scripts/route_examples.py` is a thin wrapper that writes these files; the
+planner itself, its contract and its limits live in `planner/SKILL.md`.
 
     python3 scripts/route_examples.py
 
 | | Walking | Walking (shortcuts) | Partially accessible | Fully accessible |
 |---|---|---|---|---|
 | **Malone → Clark** | 1.9 min, 149 m, **3 risers** | **1.8 min, 122 m**, cuts 80 m over Decker Quad | 2.3 min, 181 m | 2.3 min, 181 m |
-| **Malone → San Martin Garage** | 10.4 min, 816 m, **48 risers** | **8.2 min, 648 m**, ends at the garage lift | 10.5 min, 825 m | 11.1 min, 870 m, 71% compliant |
+| **Malone → San Martin Garage** | 8.2 min, 648 m | 8.2 min, 648 m | 8.2 min, 648 m | 8.8 min, 692 m |
+
+All four now finish at `San Martin Garage Elevator EL2`. Earlier numbers for
+that trip (816–870 m, 48 risers on the walking line) came from aiming at the
+building centre, because the garage has no entryway record. Every profile may
+now arrive at any qualifying door or lift, which removed the detour — and with
+it the difference between the walking profiles on that trip.
 
 Malone → Clark is the clean demo: the walking route saves 32 m by taking three
 steps, and the step-free route is the same trip 0.4 min longer. Malone → San

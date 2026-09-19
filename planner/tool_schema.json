@@ -1,0 +1,53 @@
+{
+  "note": "Function declarations for the campus route planner. The shape is the OpenAPI subset Gemini, Claude and OpenAI all accept; adapt the wrapper key per provider.",
+  "functionDeclarations": [
+    {
+      "name": "plan_route",
+      "description": "Plan a walking route across the JHU Homewood campus. Returns real geometry from A* over the campus path network, with distance, time and a step breakdown. Always call this rather than describing a route from memory; never write or adjust coordinates yourself.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "description": "Where the trip starts, as a building or outdoor space name, e.g. 'Malone Hall'. Free text is resolved against the place index."
+          },
+          "destination": {
+            "type": "string",
+            "description": "Where the trip ends, e.g. 'San Martin Garage'."
+          },
+          "profile": {
+            "type": "string",
+            "enum": ["walk", "walk_smart", "step_free", "accessible"],
+            "description": "walk_smart is the default for someone on foot: it may cut across lawns and finish at any door or lift. walk is the same without lawn shortcuts. step_free blocks stairs and hazard-graded segments. accessible also prefers fully compliant surface at 8x weight, buying better surface for extra distance. Use step_free or accessible whenever the user mentions a wheelchair, a mobility limit, a pushchair, crutches or wheeled luggage. walk_smart is NOT wheelchair-safe: its shortcuts cross grass with no surface or kerb data."
+          }
+        },
+        "required": ["origin", "destination"]
+      }
+    },
+    {
+      "name": "compare_routes",
+      "description": "Plan the same trip under several profiles at once, to answer questions like how much longer a step-free route is.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "origin": { "type": "string" },
+          "destination": { "type": "string" },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["walk", "walk_smart", "step_free", "accessible"]
+            },
+            "description": "Defaults to all four."
+          }
+        },
+        "required": ["origin", "destination"]
+      }
+    },
+    {
+      "name": "list_places",
+      "description": "Every routable place name on campus, with its use and any alias. Call this when a name the user gave does not resolve, or when plan_route returns status 'ambiguous'.",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  ]
+}

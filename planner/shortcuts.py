@@ -10,8 +10,7 @@ edges. They belong to walking modes only.
 """
 import math
 
-MX = 111320 * math.cos(math.radians(39.329))
-MY = 110540
+from .geometry import dist_to_rings, in_any, in_ring, metres as m, rings  # noqa: F401
 
 # Median speed implied by walktime/length over the 2085 graded segments.
 PAVED_SPEED = 1.31          # m/s
@@ -22,44 +21,6 @@ MIN_LEN_M = 15.0            # shorter than this is not worth a synthetic edge
 MAX_LEN_M = 250.0
 SAMPLE_M = 2.0              # spacing of the on-grass check
 MIN_ON_GRASS = 0.85         # fraction of samples that must be inside the lawn
-
-
-def m(a, b):
-    return math.hypot((a[0] - b[0]) * MX, (a[1] - b[1]) * MY)
-
-
-def rings(feature):
-    geom = feature["geometry"]
-    coords = geom["coordinates"]
-    polys = coords if geom["type"] == "MultiPolygon" else [coords]
-    return [poly[0] for poly in polys]
-
-
-def in_ring(pt, ring):
-    x, y = pt
-    inside = False
-    for (x1, y1), (x2, y2) in zip(ring, ring[1:]):
-        if (y1 > y) != (y2 > y):
-            if x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
-                inside = not inside
-    return inside
-
-
-def in_any(pt, ring_sets):
-    return any(in_ring(pt, r) for rs in ring_sets for r in rs)
-
-
-def dist_to_rings(pt, rs):
-    best = float("inf")
-    for ring in rs:
-        for a, b in zip(ring, ring[1:]):
-            ax, ay = (a[0] - pt[0]) * MX, (a[1] - pt[1]) * MY
-            bx, by = (b[0] - pt[0]) * MX, (b[1] - pt[1]) * MY
-            dx, dy = bx - ax, by - ay
-            length = dx * dx + dy * dy
-            t = 0.0 if length == 0 else max(0, min(1, (-ax * dx - ay * dy) / length))
-            best = min(best, math.hypot(ax + t * dx, ay + t * dy))
-    return best
 
 
 def build(nodes, exterior_spaces, facilities, barriers):
