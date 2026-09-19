@@ -4,9 +4,12 @@
 
 A campus map for Johns Hopkins (Homewood) that finds the best route for **how you're actually getting around**, not just the shortest one:
 
-- **Walking**: includes off-road paths and shortcuts that regular map apps don't show.
+- **Walking**: includes off-road paths and shortcuts that regular map apps don't show, including cutting straight across grass (quads, lawns).
 - **Wheelchair**: step-free routes that avoid stairs and curbs without curb cuts, and prefer ramps.
 - **Skateboard / bike**: trades off speed against hills and rough surfaces.
+- **E-scooter**: smooth pavement matters most (small wheels hate brick, cracks and curbs); the motor makes hills cheap.
+
+Every route also gets a **safety score** (lighting, visibility, security nearby), which matters most at night. *(Proposed; see "Safety score" below.)*
 
 A robot drives around campus collecting camera and sensor data. **Gemini** turns that data into an accessibility map, then reasons over it to choose and explain a route for each user. The more the robot maps, the less it needs to verify routes in person.
 
@@ -36,17 +39,26 @@ The **backend is the hub**. The robot and the frontend never talk to each other 
 
 ## Core idea: a campus graph with tagged edges
 
-- Campus walkways are modeled as a **graph** built from OpenStreetMap, plus shortcut paths we add by hand.
+- Campus walkways are modeled as a **graph** built from OpenStreetMap, plus shortcut paths we add by hand. For walking, that includes **straight-line edges across open grass** (quads, lawns), which only walk mode may use.
 - Each edge (path segment) carries **tags**: stairs, ramp, slope, surface/roughness, curb cut, and so on. Each tag has a **confidence** score.
 - Routing runs a normal pathfinder (A*) with a **different cost function per mode**. For example, stairs are impassable for a wheelchair, and slope is penalized heavily for a skateboard.
 - The route geometry always comes from the graph. Gemini decides and explains, but never draws the path itself.
+
+## Safety score (proposed)
+
+Each route gets a **personal-safety score** (0–100) with plain-language reasons. It's based on street lighting, visibility/sightlines, and security nearby (blue-light emergency phones, staffed security desks), **not** on crime data or neighbourhood ratings.
+
+- **Data:** OpenStreetMap `lit` tags and street lamps; one **night-time robot drive** whose photos Gemini rates for lighting and sightlines; a hand-made list of blue-light phones and security desks.
+- **Routing:** the route request includes the departure time (and whether that is day or night). At night, the cost function penalises unlit and isolated segments, so walking prefers the lit path over a dark shortcut.
+- **Owners:** backend computes the score and has Gemini explain it; robot team does the night drive; the frontend shows the score, a "Leaving at" time and safety map layers (already mocked).
 
 ## Where Gemini is used
 
 1. **Perception.** The robot uploads camera frames, and Gemini vision labels them (stairs, surface, ramp, obstacles) as structured output. Those labels become tags on the nearest edge.
 2. **Routing agent.** The user describes their situation in plain language ("on a skateboard, hate hills"). Gemini turns that into routing preferences, calls the pathfinder as a tool, compares the candidate routes, and explains its choice.
-3. **Verification.** For low-confidence segments along a route, Gemini checks the available images. Segments that are still uncertain become tasks for the robot.
-4. *(Stretch)* **User hazard reports.** A student uploads a photo, and Gemini classifies it and updates the map.
+3. **Safety.** Gemini rates night-time photos for lighting and sightlines, and explains each route's safety score.
+4. **Verification.** For low-confidence segments along a route, Gemini checks the available images. Segments that are still uncertain become tasks for the robot.
+5. *(Stretch)* **User hazard reports.** A student uploads a photo, and Gemini classifies it and updates the map.
 
 ## The verification loop
 
@@ -77,7 +89,7 @@ The exact request/response shapes will live in the backend's API docs (FastAPI `
 
 **Frontend ↔ Backend**
 - Search places on campus
-- Request a route (start, end, mode, optional free-text preferences) and get back the route, alternatives, per-segment tags and Gemini's explanation
+- Request a route (start, end, mode, optional free-text preferences, time of day) and get back the route, alternatives, per-segment tags, a safety score and Gemini's explanation
 - Get the tagged map edges (for overlays like "show stairs")
 - Get recent robot observations (live feed panel)
 
