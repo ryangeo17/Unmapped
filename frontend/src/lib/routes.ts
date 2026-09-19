@@ -1,7 +1,7 @@
-// Example routes solved by scripts/route_examples.py. See
-// public/data/routes/README.md for the cost model behind each mode.
+// Example walking routes solved by the planner package; see planner/SKILL.md.
+// Accessibility routing is a separate feature and is not represented here.
 
-export type RouteMode = 'walking' | 'smart' | 'partial' | 'accessible'
+export type RouteMode = 'walking' | 'smart'
 
 export type RouteSummary = {
   trip: string
@@ -13,9 +13,7 @@ export type RouteSummary = {
   minutes?: number
   metres?: number
   feet?: number
-  stairSegments?: number
-  risers?: number
-  fullyCompliantShare?: number | null
+  steps?: number
   shortcutMetres?: number
   shortcutSpaces?: string[]
   grades?: Record<string, number>
@@ -26,7 +24,7 @@ export const TRIPS = [
   { id: 'malone-to-san-martin-garage', label: 'Malone Hall → San Martin Garage' },
 ] as const
 
-export const MODE_ORDER: RouteMode[] = ['walking', 'smart', 'partial', 'accessible']
+export const MODE_ORDER: RouteMode[] = ['walking', 'smart']
 
 // Deliberately outside the green/amber/red the Pathways layer uses for its
 // accessibility grading. A route drawn in those colours vanishes into the
@@ -35,8 +33,6 @@ export const MODE_ORDER: RouteMode[] = ['walking', 'smart', 'partial', 'accessib
 export const MODE_STYLE: Record<RouteMode, { color: string; width: number; label: string }> = {
   walking: { color: '#111827', width: 5, label: 'Walking' },
   smart: { color: '#db2777', width: 5, label: 'Walking (shortcuts)' },
-  partial: { color: '#a855f7', width: 5, label: 'Partially accessible' },
-  accessible: { color: '#2563eb', width: 5, label: 'Fully accessible' },
 }
 
 export const CASING = '#ffffff'

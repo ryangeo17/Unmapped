@@ -72,7 +72,7 @@ class Places:
             return None, [f["properties"]["name"] for f in hits]
         return None, []
 
-    def entrances(self, feature, accessible_only=False):
+    def entrances(self, feature):
         """Points that count as a way into this place.
 
         A lift inside the footprint counts: for a garage it is the whole point,
@@ -95,20 +95,16 @@ class Places:
             props = e["properties"]
             label = props.get("entrance_name") or "entrance"
             pt = e["geometry"]["coordinates"]
-            if accessible_only and props.get("accessible_entrance") != "Y":
-                continue
             if label.startswith(name) or (inside(pt) and not claimed_elsewhere(label)):
-                found.append({"point": pt, "label": label, "kind": "entrance",
-                              "stepFree": props.get("accessible_entrance") == "Y"})
-        # A lift is step-free by nature, so it qualifies under either filter.
+                found.append({"point": pt, "label": label, "kind": "entrance"})
+        # A lift into a car park is a doorway like any other.
         for e in self.elevators:
             label = e["properties"].get("description") or "lift"
             pt = e["geometry"]["coordinates"]
             if label.startswith(name) or (inside(pt) and not claimed_elsewhere(label)):
-                found.append({"point": pt, "label": label, "kind": "lift",
-                              "stepFree": True})
+                found.append({"point": pt, "label": label, "kind": "lift"})
 
         if not found:
             return [{"point": centroid(feature), "kind": "centre",
-                     "label": name + " (building centre)", "stepFree": None}]
+                     "label": name + " (building centre)"}]
         return found

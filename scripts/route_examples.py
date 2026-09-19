@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Solve the example trips with the planner package and write them out.
+"""Solve the example walking trips and write them out for the frontend.
 
     python3 scripts/route_examples.py
 
-Writes one GeoJSON per trip/profile under frontend/public/data/routes, plus a
-summary the frontend reads. The planner itself lives in ../planner.
+Two variants per trip: the paved network, and the same trip allowed to cut
+across lawns. The planner itself, its contract and its limits live in
+../planner/SKILL.md.
 """
 import json
 import os
@@ -12,34 +13,37 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from planner import profiles                      # noqa: E402
-from planner.plan import plan_route               # noqa: E402
+from planner.plan import plan_route  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                    "..", "frontend", "public", "data", "routes")
 
-# Slugs the frontend already uses, mapped to the planner's profile names.
-MODES = {"walking": "walk", "smart": "walk_smart",
-         "partial": "step_free", "accessible": "accessible"}
+VARIANTS = {"walking": False, "smart": True}
 
 TRIPS = [
     ("malone-to-clark", "Malone Hall", "Clark Hall"),
     ("malone-to-san-martin-garage", "Malone Hall", "San Martin Garage"),
 ]
 
+LABEL = {"walking": "Walking", "smart": "Walking (shortcuts)"}
+
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    for stale in os.listdir(OUT):
+        if stale.endswith(".geojson") and stale.split(".")[-2] not in VARIANTS:
+            os.remove(os.path.join(OUT, stale))
+            print("removed stale %s" % stale)
+
     summary = []
     for slug, origin, dest in TRIPS:
         print("\n=== %s -> %s ===" % (origin, dest))
-        for mode, profile in MODES.items():
-            route = plan_route(origin, dest, profile)
-            entry = {"trip": slug, "mode": mode,
-                     "modeLabel": profiles.PROFILES[profile]["label"],
+        for mode, shortcuts in VARIANTS.items():
+            route = plan_route(origin, dest, shortcuts)
+            entry = {"trip": slug, "mode": mode, "modeLabel": LABEL[mode],
                      "from": origin, "to": dest, "status": route["status"]}
             if route["status"] != "ok":
-                print("  %-22s %s" % (entry["modeLabel"], route["status"]))
+                print("  %-22s %s" % (LABEL[mode], route["status"]))
                 summary.append(entry)
                 continue
 
@@ -48,18 +52,17 @@ def main():
                 "from": route["origin"]["arrival"],
                 "to": route["destination"]["arrival"],
                 "minutes": s["minutes"], "metres": s["metres"], "feet": s["feet"],
-                "stairSegments": s["stairSegments"], "risers": s["risers"],
+                "steps": s["steps"],
                 "shortcutMetres": s["shortcutMetres"],
                 "shortcutSpaces": s["shortcutSpaces"],
-                "fullyCompliantShare": s["fullyCompliantShare"],
                 "warnings": route["warnings"],
             })
             note = ""
             if s["shortcutMetres"]:
                 note = "  cuts %.0fm across %s" % (s["shortcutMetres"],
                                                    ", ".join(s["shortcutSpaces"]))
-            print("  %-22s %5.1f min  %5.0f m  %d risers -> %s%s"
-                  % (entry["modeLabel"], s["minutes"], s["metres"], s["risers"],
+            print("  %-22s %5.1f min  %5.0f m  %d steps -> %s%s"
+                  % (LABEL[mode], s["minutes"], s["metres"], s["steps"],
                      route["destination"]["arrival"], note))
 
             with open(os.path.join(OUT, "%s.%s.geojson" % (slug, mode)), "w") as fh:

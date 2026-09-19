@@ -6,16 +6,13 @@ any transport — HTTP, a queue, a direct import — shares one definition.
 import json
 import os
 
-from . import profiles
-from .plan import compare, plan_route, places
+from .plan import plan_route, places
 
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tool_schema.json")
 
 TOOLS = {
     "plan_route": lambda a: plan_route(a["origin"], a["destination"],
-                                       a.get("profile", profiles.DEFAULT_PROFILE)),
-    "compare_routes": lambda a: compare(a["origin"], a["destination"],
-                                        a.get("profiles")),
+                                       a.get("allow_shortcuts", True)),
     "list_places": lambda a: {"places": places().index()},
 }
 

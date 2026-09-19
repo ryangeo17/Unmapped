@@ -44,10 +44,10 @@ function ModeRow({
             {row.metres?.toFixed(0)} m
           </span>
           <span className="w-16 text-right">
-            {row.risers ? (
-              <span className="text-red-600">{row.risers} steps</span>
+            {row.steps ? (
+              <span className="text-gray-700">{row.steps} steps</span>
             ) : (
-              <span className="text-green-700">step-free</span>
+              <span className="text-gray-400">no steps</span>
             )}
           </span>
         </>
@@ -135,9 +135,9 @@ export default function RoutePicker() {
 
       {selectedTrip && (
         <p className="text-xs text-gray-500">
-          One mode is drawn at a time — pick a row to switch. Filled dot is the
-          start, hollow dot the destination. Shortcut edges cross open lawn and
-          are not wheelchair-safe; they are only offered to walking.
+          One route is drawn at a time — pick a row to switch. Filled dot is
+          the start, hollow dot the destination. Shortcut edges cross open lawn
+          and are inferred, not surveyed.
         </p>
       )}
     </section>

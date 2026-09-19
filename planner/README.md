@@ -1,14 +1,16 @@
 # planner
 
-The campus route planner, as a package. `SKILL.md` is the contract a model (or
-an integrator) reads; this file is how to run it.
+The campus **walking** route planner, as a package. `SKILL.md` is the contract a
+model (or an integrator) reads; this file is how to run it.
+
+Accessibility routing — stair and hazard filters, surface grading, robot
+observations — is a separate feature. This module deliberately has none of it.
 
 ```
 planner/
-  SKILL.md            the contract — profiles, result shape, rules, limits
+  SKILL.md            the contract — result shape, rules, limits
   tool_schema.json    function declarations for Gemini / Claude / OpenAI
-  plan.py             plan_route(), compare(), the A*
-  profiles.py         the four routing profiles
+  plan.py             plan_route() and the A*
   places.py           free text -> building -> the doors you can arrive at
   graph.py            graph assembly and the disk cache
   shortcuts.py        lawn desire-path edges
@@ -23,7 +25,7 @@ planner/
 
 ```python
 from planner.plan import plan_route
-route = plan_route("Malone Hall", "San Martin Garage", "walk_smart")
+route = plan_route("Malone Hall", "San Martin Garage")
 route["geometry"]          # LineString, ready for a GeoJSON source
 route["summary"]["minutes"]
 route["warnings"]          # must be shown to the user
@@ -45,18 +47,16 @@ and not a per-request cost. Rerun after the campus data changes:
     uvicorn planner.server:app --reload
 
     GET  /places      every routable name, ~9 KB
-    GET  /profiles    the four profiles with descriptions
-    POST /route       {origin, destination, profile}
-    POST /compare     {origin, destination, profiles?}
+    POST /route       {origin, destination, allow_shortcuts?}
 
 ## Give it to a model
 
     pip install google-genai
     export GEMINI_API_KEY=...
-    python3 -m planner.gemini_agent "I'm on crutches, Malone to the garage"
+    python3 -m planner.gemini_agent "quickest way from Malone to the garage"
 
 The model gets `tool_schema.json` and `SKILL.md`, and the place index when it
-asks. It never receives the graph or the campus GeoJSON: it picks a profile and
-explains the result, while A* produces the geometry. `gemini_agent.ask()`
+asks. It never receives the graph or the campus GeoJSON: it resolves the place
+names and explains the result, while A* produces the geometry. `gemini_agent.ask()`
 returns `(answer_text, routes)` so the text goes to the chat pane and the
 untouched route objects go to the map.

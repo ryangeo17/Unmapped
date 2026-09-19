@@ -1,4 +1,4 @@
-# Campus route planner
+# Campus walking route planner
 
 Plans a walking route across the JHU Homewood campus and returns real geometry
 plus a plain-language breakdown. Built to be called as a tool by a model, and
@@ -6,49 +6,50 @@ to be imported directly by Python.
 
 ```python
 from planner.plan import plan_route
-route = plan_route("Malone Hall", "San Martin Garage", "walk_smart")
+route = plan_route("Malone Hall", "San Martin Garage")
 ```
+
+## Scope
+
+**Walking only.** This module knows nothing about wheelchair access, stairs as
+obstacles, surface grading or robot observations. That is a separate feature
+with its own data and its own rules. Do not answer accessibility questions from
+this planner's output — it will happily route someone up a flight of steps.
 
 ## What this is for, and what it is not for
 
 **The model never computes the path.** The graph holds 3,635 nodes and 4,903
 edges; A* solves it exactly in milliseconds, and a language model asked to do
-the same will invent coordinates that do not lie on any pavement. The division
-of labour is:
+the same will invent coordinates that do not lie on any pavement.
 
 | Model | Planner |
 |---|---|
-| reads the user's situation | filters and weights the graph |
-| picks a `profile` | runs A* |
-| resolves "the garage" against the place index | returns geometry, distance, time, steps |
-| writes the explanation | returns warnings the explanation must include |
+| reads what the user wants | runs A* over the campus graph |
+| resolves "the garage" against the place index | returns geometry, distance, time, legs |
+| decides whether shortcuts are wanted | returns warnings the explanation must include |
+| writes the explanation | |
 
-**Do not send the campus data to the model.** Pass `place_index()` — about 120
-names — so it can resolve free text. Everything else stays server-side.
+**Do not send the campus data to the model.** Pass `places().index()` — 116
+names, about 9 KB — so it can resolve free text. The graph stays server-side.
 
-## Profiles
+## Two things this planner models that the official network does not
 
-| `profile` | Blocks | Prefers | Entrances |
-|---|---|---|---|
-| `walk` | nothing | — | any door or lift |
-| `walk_smart` | nothing | lawn shortcuts when faster | any door or lift |
-| `step_free` | stairs, hazard-graded segments | — | step-free doors, lifts |
-| `accessible` | stairs, hazard-graded segments | fully compliant surface, 8× | step-free doors, lifts |
+**Lawn shortcuts.** People cut across quads; the official network routes around
+them. 933 straight edges cross open lawn where the line stays on grass and
+crosses no building. They are priced at 1.05 m/s against the 1.31 m/s the
+network's own walktime implies, so one is only taken when it genuinely saves
+time. `allow_shortcuts=False` stays on paved network — useful in rain, at
+night, or to show a user what the shortcut buys.
 
-Pick `walk_smart` by default for someone on foot. Pick `step_free` or
-`accessible` when the user mentions a wheelchair, a mobility limit, a pushchair,
-crutches, luggage on wheels, or asks to avoid stairs. `accessible` buys better
-surface for extra distance; `step_free` is the faster step-free option.
-
-**`walk_smart` is not wheelchair-safe.** Its shortcut edges cross open grass,
-and nothing in the data describes their surface, kerbs or slope. Never offer it
-in response to an accessibility need.
+**Any entrance counts.** Both ends of the trip may use any door, and a lift
+inside a building counts as a door. San Martin Garage has no entryway record at
+all, so aiming at the building centre walks you 169 m further round the block
+instead of stopping at `San Martin Garage Elevator EL2`.
 
 ## Calling it
 
 ```
-plan_route(origin: str, destination: str, profile: str = "walk_smart") -> dict
-compare(origin: str, destination: str, profiles: list[str] | None) -> dict
+plan_route(origin: str, destination: str, shortcuts: bool = True) -> dict
 places().index() -> list[dict]      # name, kind, use, alias
 ```
 
@@ -59,34 +60,32 @@ places().index() -> list[dict]      # name, kind, use, alias
 
 `status` is one of four values and the caller must branch on it.
 
-**`ok`** — a route was found.
+**`ok`**
 
 ```json
 {
   "status": "ok",
-  "profile": "walk_smart",
-  "profileLabel": "Walking (shortcuts)",
+  "shortcuts": true,
   "origin":      {"query": "Malone Hall", "resolved": "Malone Hall",
                   "arrival": "Malone Hall North", "kind": "entrance",
                   "point": [-76.62087, 39.32644]},
   "destination": {"query": "San Martin Garage", "resolved": "San Martin Garage",
                   "arrival": "San Martin Garage Elevator EL2", "kind": "lift",
                   "point": [-76.62352, 39.33062]},
-  "summary": {"minutes": 8.2, "metres": 647.5, "feet": 2124,
-              "stairSegments": 0, "risers": 0,
-              "shortcutMetres": 0, "shortcutSpaces": [],
-              "fullyCompliantShare": 0.585},
+  "summary": {"minutes": 8.2, "metres": 647.5, "feet": 2124, "steps": 0,
+              "shortcutMetres": 0, "shortcutSpaces": []},
   "geometry": {"type": "LineString", "coordinates": [[lng, lat], ...]},
-  "steps": [{"kind": "paved", "name": null, "metres": 267.6, "minutes": 3.42,
-             "risers": 0, "from": [lng, lat], "to": [lng, lat]}],
+  "legs": [{"kind": "paved", "name": null, "metres": 267.6, "minutes": 3.42,
+            "from": [lng, lat], "to": [lng, lat]}],
   "warnings": []
 }
 ```
 
 `geometry` goes straight into a GeoJSON source — do not reformat or round it.
-`steps` are runs of consecutive edges sharing a character: `paved`, `stairs`,
-`ramp`, `indoor`, `shortcut`. `name` is the segment's own name where the data
-has one, such as `Gilman Hall Tunnel`, or the lawn being crossed.
+`legs` are runs of consecutive edges sharing a character: `paved`, `steps`,
+`indoor`, `shortcut`. `name` is the segment's own name where the data has one,
+such as `Gilman Hall Tunnel`, or the lawn being crossed. `summary.steps` counts
+stair risers on the route, as information, not as a filter.
 
 **`ambiguous`** — the query matched several places. Ask which, do not guess.
 
@@ -96,9 +95,9 @@ has one, such as `Gilman Hall Tunnel`, or the lawn being crossed.
                 "San Martin Garage", "South Garage"]}
 ```
 
-**`no_route`** — the profile's filters disconnect the two buildings.
+**`no_route`** — the two places are not connected in the graph.
 
-**`error`** — the name resolved to nothing, or the profile is unknown.
+**`error`** — the name resolved to nothing.
 
 ## Rules for a model using this
 
@@ -106,28 +105,25 @@ has one, such as `Gilman Hall Tunnel`, or the lawn being crossed.
    get back.
 2. Report `summary.minutes` and `summary.metres` as returned. Do not re-derive
    them from the geometry.
-3. Repeat every string in `warnings` to the user. They cover lawn crossings and
-   the limits of "step-free"; dropping them is the main way this tool can
-   mislead someone with a mobility need.
-4. On `ambiguous`, ask. On `no_route`, say which profile failed and offer the
-   next most permissive one.
+3. Repeat every string in `warnings` to the user.
+4. On `ambiguous`, ask. Do not pick one.
 5. Say which door the route arrives at. "Ends at San Martin Garage Elevator
    EL2" is the useful part for a car park; "arrives at San Martin Garage" is
    not.
+6. If the user raises a mobility need, say this planner does not cover it
+   rather than answering from its output.
 
 ## Known limits, worth stating when they matter
 
 - **Undirected.** `travel_direction` is populated on 16% of segments, so one-way
   restrictions are not modelled.
-- **No slope.** There is no elevation anywhere in this dataset. A cycling or
-  skateboarding profile needs USGS data first.
-- **Step-free is a claim about the network, not the ground.** 39% of the
-  basemap's stair footprints are more than 10 m from any stair segment in the
-  routing network, so a step-free route can still meet steps.
-- **Outdoor only, one level.** `Levels`, `Units` and `Transitions` are absent
-  from this deployment, so there is no indoor or multi-floor routing.
+- **No slope.** There is no elevation anywhere in this dataset.
+- **Outdoor, one level.** `Levels`, `Units` and `Transitions` are absent from
+  this deployment, so there is no indoor or multi-floor routing.
 - **Nodes snap at about 0.9 m,** and 17% of segment endpoints are still
   dangling, so some pavement is unreachable.
+- **Shortcut edges are inferred, not surveyed.** Nothing in the data describes
+  the surface of a line drawn across grass.
 
 ## Rebuilding
 

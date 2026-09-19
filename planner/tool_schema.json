@@ -1,9 +1,9 @@
 {
-  "note": "Function declarations for the campus route planner. The shape is the OpenAPI subset Gemini, Claude and OpenAI all accept; adapt the wrapper key per provider.",
+  "note": "Function declarations for the campus walking route planner. The shape is the OpenAPI subset Gemini, Claude and OpenAI all accept; adapt the wrapper key per provider.",
   "functionDeclarations": [
     {
       "name": "plan_route",
-      "description": "Plan a walking route across the JHU Homewood campus. Returns real geometry from A* over the campus path network, with distance, time and a step breakdown. Always call this rather than describing a route from memory; never write or adjust coordinates yourself.",
+      "description": "Plan a walking route across the JHU Homewood campus. Returns real geometry from A* over the campus path network, with distance, time and a leg breakdown. Always call this rather than describing a route from memory; never write or adjust coordinates yourself. This plans walking routes only and knows nothing about wheelchair access.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -15,30 +15,9 @@
             "type": "string",
             "description": "Where the trip ends, e.g. 'San Martin Garage'."
           },
-          "profile": {
-            "type": "string",
-            "enum": ["walk", "walk_smart", "step_free", "accessible"],
-            "description": "walk_smart is the default for someone on foot: it may cut across lawns and finish at any door or lift. walk is the same without lawn shortcuts. step_free blocks stairs and hazard-graded segments. accessible also prefers fully compliant surface at 8x weight, buying better surface for extra distance. Use step_free or accessible whenever the user mentions a wheelchair, a mobility limit, a pushchair, crutches or wheeled luggage. walk_smart is NOT wheelchair-safe: its shortcuts cross grass with no surface or kerb data."
-          }
-        },
-        "required": ["origin", "destination"]
-      }
-    },
-    {
-      "name": "compare_routes",
-      "description": "Plan the same trip under several profiles at once, to answer questions like how much longer a step-free route is.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "origin": { "type": "string" },
-          "destination": { "type": "string" },
-          "profiles": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": ["walk", "walk_smart", "step_free", "accessible"]
-            },
-            "description": "Defaults to all four."
+          "allow_shortcuts": {
+            "type": "boolean",
+            "description": "Default true. Lets the route cut straight across open lawns where that is faster. Set false to stay on the official paved network, for instance in rain or at night, or to show the user what the shortcut saves."
           }
         },
         "required": ["origin", "destination"]

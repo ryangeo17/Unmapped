@@ -3,7 +3,7 @@
 
     pip install google-genai
     export GEMINI_API_KEY=...
-    python3 -m planner.gemini_agent "I'm on crutches, how do I get from Malone to the garage?"
+    python3 -m planner.gemini_agent "quickest way from Malone to the garage?"
 
 The campus data never goes to the model. It gets the tool declarations and, on
 demand, the place index: names only, about 120 of them.
@@ -65,8 +65,6 @@ def ask(question, model=MODEL):
             result = call(fc.name, args)
             if fc.name == "plan_route" and result.get("status") == "ok":
                 routes.append(result)
-            if fc.name == "compare_routes":
-                routes.extend(r for r in result["routes"] if r.get("status") == "ok")
             # Geometry is for the frontend, not for the model: sending hundreds
             # of coordinates back wastes context and tempts it to quote them.
             trimmed = {k: v for k, v in result.items() if k != "geometry"}
@@ -82,10 +80,10 @@ def main():
     answer, routes = ask(question)
     print(answer)
     for route in routes:
-        print("\n[%s] %s -> %s  %.1f min, %.0f m, %d points"
-              % (route["profile"], route["origin"]["arrival"],
-                 route["destination"]["arrival"], route["summary"]["minutes"],
-                 route["summary"]["metres"], len(route["geometry"]["coordinates"])))
+        print("\n%s -> %s  %.1f min, %.0f m, %d points"
+              % (route["origin"]["arrival"], route["destination"]["arrival"],
+                 route["summary"]["minutes"], route["summary"]["metres"],
+                 len(route["geometry"]["coordinates"])))
 
 
 if __name__ == "__main__":

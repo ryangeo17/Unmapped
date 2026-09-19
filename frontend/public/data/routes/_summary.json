@@ -9,14 +9,10 @@
     "minutes": 1.9,
     "metres": 149.0,
     "feet": 489,
-    "stairSegments": 1,
-    "risers": 3,
+    "steps": 3,
     "shortcutMetres": 0,
     "shortcutSpaces": [],
-    "fullyCompliantShare": 0.933,
-    "warnings": [
-      "3 steps on this route."
-    ]
+    "warnings": []
   },
   {
     "trip": "malone-to-clark",
@@ -28,53 +24,13 @@
     "minutes": 1.8,
     "metres": 122.4,
     "feet": 401,
-    "stairSegments": 0,
-    "risers": 0,
+    "steps": 0,
     "shortcutMetres": 79.5,
     "shortcutSpaces": [
       "Decker Quad"
     ],
-    "fullyCompliantShare": 0.336,
     "warnings": [
-      "79 m of this route crosses open lawn (Decker Quad). No surface, kerb or slope data backs those segments."
-    ]
-  },
-  {
-    "trip": "malone-to-clark",
-    "mode": "partial",
-    "modeLabel": "Partially accessible",
-    "from": "Malone Hall North",
-    "to": "Clark Hall Main",
-    "status": "ok",
-    "minutes": 2.3,
-    "metres": 181.0,
-    "feet": 594,
-    "stairSegments": 0,
-    "risers": 0,
-    "shortcutMetres": 0,
-    "shortcutSpaces": [],
-    "fullyCompliantShare": 1.0,
-    "warnings": [
-      "Step-free here means no stairs in the routing network. 39% of the basemap's stair footprints are not modelled as network segments, so steps are still possible."
-    ]
-  },
-  {
-    "trip": "malone-to-clark",
-    "mode": "accessible",
-    "modeLabel": "Fully accessible",
-    "from": "Malone Hall North",
-    "to": "Clark Hall Main",
-    "status": "ok",
-    "minutes": 2.3,
-    "metres": 181.0,
-    "feet": 594,
-    "stairSegments": 0,
-    "risers": 0,
-    "shortcutMetres": 0,
-    "shortcutSpaces": [],
-    "fullyCompliantShare": 1.0,
-    "warnings": [
-      "Step-free here means no stairs in the routing network. 39% of the basemap's stair footprints are not modelled as network segments, so steps are still possible."
+      "79 m of this route crosses open lawn (Decker Quad)."
     ]
   },
   {
@@ -87,11 +43,9 @@
     "minutes": 8.2,
     "metres": 647.5,
     "feet": 2124,
-    "stairSegments": 0,
-    "risers": 0,
+    "steps": 0,
     "shortcutMetres": 0,
     "shortcutSpaces": [],
-    "fullyCompliantShare": 0.585,
     "warnings": []
   },
   {
@@ -104,49 +58,9 @@
     "minutes": 8.2,
     "metres": 647.5,
     "feet": 2124,
-    "stairSegments": 0,
-    "risers": 0,
+    "steps": 0,
     "shortcutMetres": 0,
     "shortcutSpaces": [],
-    "fullyCompliantShare": 0.585,
     "warnings": []
-  },
-  {
-    "trip": "malone-to-san-martin-garage",
-    "mode": "partial",
-    "modeLabel": "Partially accessible",
-    "from": "Malone Hall North",
-    "to": "San Martin Garage Elevator EL2",
-    "status": "ok",
-    "minutes": 8.2,
-    "metres": 647.5,
-    "feet": 2124,
-    "stairSegments": 0,
-    "risers": 0,
-    "shortcutMetres": 0,
-    "shortcutSpaces": [],
-    "fullyCompliantShare": 0.598,
-    "warnings": [
-      "Step-free here means no stairs in the routing network. 39% of the basemap's stair footprints are not modelled as network segments, so steps are still possible."
-    ]
-  },
-  {
-    "trip": "malone-to-san-martin-garage",
-    "mode": "accessible",
-    "modeLabel": "Fully accessible",
-    "from": "Malone Hall North",
-    "to": "San Martin Garage Elevator EL2",
-    "status": "ok",
-    "minutes": 8.8,
-    "metres": 691.9,
-    "feet": 2270,
-    "stairSegments": 0,
-    "risers": 0,
-    "shortcutMetres": 0,
-    "shortcutSpaces": [],
-    "fullyCompliantShare": 0.748,
-    "warnings": [
-      "Step-free here means no stairs in the routing network. 39% of the basemap's stair footprints are not modelled as network segments, so steps are still possible."
-    ]
   }
 ]
