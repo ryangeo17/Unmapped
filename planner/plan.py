@@ -36,9 +36,11 @@ def places():
     return _load()["places"]
 
 
-def _graph():
+def _graph(smarter):
     adj = collections.defaultdict(list)
     for e in _load()["edges"]:
+        if e["p"].get("shortcut") and not smarter:
+            continue
         edge = (e["min"], e["m"], e["p"])
         adj[e["a"]].append((e["b"], edge))
         adj[e["b"]].append((e["a"], edge))
@@ -110,12 +112,17 @@ def _steps(path, edges):
     return out
 
 
-def plan_route(origin, destination):
+def plan_route(origin, destination, smarter=True):
     """Plan the walking route between two free-text place names.
 
-    Lawn shortcuts and every entrance are always in play; they are priced, not
-    optional, so A* takes a shortcut or a side door only when it is actually
-    faster.
+    `smarter` is the product switch. On, the search may cut across open lawn
+    and finish at any door including a car-park lift, and the result carries
+    what that saved against the plain route. Off, it stays on the official
+    paved network and uses signed entrances only — roughly what the campus
+    app itself would tell you.
+
+    Both are priced, not forced: A* takes a shortcut or a side door only when
+    it is genuinely faster.
     """
     pl = places()
 
@@ -133,9 +140,10 @@ def plan_route(origin, destination):
         return {"status": "error", "field": field,
                 "error": "could not resolve %s %r" % (field, query)}
 
-    adj = _graph()
-    start_at = {_nearest(adj, d["point"]): d for d in pl.entrances(a)}
-    end_at = {_nearest(adj, d["point"]): d for d in pl.entrances(b)}
+    adj = _graph(smarter)
+    doors = lambda place: pl.entrances(place, lifts=smarter)
+    start_at = {_nearest(adj, d["point"]): d for d in doors(a)}
+    end_at = {_nearest(adj, d["point"]): d for d in doors(b)}
 
     path, edges = _astar(adj, start_at, end_at)
     if not path:
@@ -178,8 +186,24 @@ def plan_route(origin, destination):
 
     origin_door = start_at[path[0]]
     dest_door = end_at[path[-1]]
+
+    # What the switch bought. Cheap — a second A* over the same cached graph —
+    # and it is the only way the toggle means anything to the person using it.
+    saved = None
+    if smarter:
+        plain = plan_route(origin, destination, smarter=False)
+        if plain["status"] == "ok":
+            saved = {
+                "plainMetres": plain["summary"]["metres"],
+                "plainMinutes": plain["summary"]["minutes"],
+                "savedMetres": round(plain["summary"]["metres"] - total_m, 1),
+                "savedMinutes": round(plain["summary"]["minutes"] - minutes, 1),
+                "plainArrival": plain["destination"]["arrival"],
+            }
+
     return {
         "status": "ok",
+        "smarter": smarter,
         "origin": {
             "query": origin, "resolved": a["properties"]["name"],
             "arrival": origin_door["label"], "kind": origin_door["kind"],
@@ -202,5 +226,6 @@ def plan_route(origin, destination):
         # Ready to hand straight to a GeoJSON source.
         "geometry": {"type": "LineString", "coordinates": [list(p) for p in path]},
         "legs": _steps(path, edges),
+        "savedBySmarter": saved,
         "warnings": warnings,
     }

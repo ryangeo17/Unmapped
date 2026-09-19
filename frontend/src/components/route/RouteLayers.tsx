@@ -1,77 +1,78 @@
 import { useMemo } from 'react'
 import { Layer, Source } from 'react-map-gl/maplibre'
 import type { FeatureCollection } from 'geojson'
-import { useTripRoute } from '../../hooks/useRoutes'
-import { ROUTE_CASING, ROUTE_COLOR, ROUTE_WIDTH } from '../../lib/routes'
 import { useLayerStore } from '../../store/useLayerStore'
 
-function endpointsOf(line: FeatureCollection | undefined): FeatureCollection | null {
-  const geom = line?.features?.[0]?.geometry
-  if (!geom || geom.type !== 'LineString') return null
-  return {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        properties: { role: 'start' },
-        geometry: { type: 'Point', coordinates: geom.coordinates[0] },
-      },
-      {
-        type: 'Feature',
-        properties: { role: 'end' },
-        geometry: {
-          type: 'Point',
-          coordinates: geom.coordinates[geom.coordinates.length - 1],
-        },
-      },
-    ],
-  }
-}
+// Outside the green/amber/red the Pathways layer uses for accessibility
+// grading, so the route still reads as a route over the campus data.
+const COLOR = '#db2777'
+const WIDTH = 5
 
 export default function RouteLayers() {
-  const trip = useLayerStore((s) => s.selectedTrip)
-  const { data } = useTripRoute(trip)
-  const endpoints = useMemo(() => endpointsOf(data), [data])
+  const route = useLayerStore((s) => s.route)
 
-  if (!trip || !data) return null
+  const line = useMemo<FeatureCollection | null>(
+    () =>
+      route && {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry: route.geometry }],
+      },
+    [route],
+  )
+
+  const endpoints = useMemo<FeatureCollection | null>(() => {
+    if (!route) return null
+    const coords = route.geometry.coordinates
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { role: 'start' },
+          geometry: { type: 'Point', coordinates: coords[0] },
+        },
+        {
+          type: 'Feature',
+          properties: { role: 'end' },
+          geometry: { type: 'Point', coordinates: coords[coords.length - 1] },
+        },
+      ],
+    }
+  }, [route])
+
+  if (!line || !endpoints) return null
 
   return (
     <>
-      <Source id="route-line" type="geojson" data={data}>
+      <Source id="route-line" type="geojson" data={line}>
         {/* White casing so the line reads as a route over the pathway network,
             which is itself drawn in green/amber/red. */}
         <Layer
           id="route-casing"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{
-            'line-color': ROUTE_CASING,
-            'line-width': ROUTE_WIDTH + 6,
-            'line-opacity': 0.95,
-          }}
+          paint={{ 'line-color': '#ffffff', 'line-width': WIDTH + 6, 'line-opacity': 0.95 }}
         />
         <Layer
           id="route-line"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{ 'line-color': ROUTE_COLOR, 'line-width': ROUTE_WIDTH }}
+          paint={{ 'line-color': COLOR, 'line-width': WIDTH }}
         />
       </Source>
 
-      {endpoints && (
-        <Source id="route-endpoints" type="geojson" data={endpoints}>
-          <Layer
-            id="route-endpoints"
-            type="circle"
-            paint={{
-              'circle-radius': 7,
-              'circle-color': ['match', ['get', 'role'], 'start', '#111827', '#ffffff'],
-              'circle-stroke-color': '#111827',
-              'circle-stroke-width': 3,
-            }}
-          />
-        </Source>
-      )}
+      <Source id="route-endpoints" type="geojson" data={endpoints}>
+        <Layer
+          id="route-endpoints"
+          type="circle"
+          paint={{
+            'circle-radius': 7,
+            'circle-color': ['match', ['get', 'role'], 'start', '#111827', '#ffffff'],
+            'circle-stroke-color': '#111827',
+            'circle-stroke-width': 3,
+          }}
+        />
+      </Source>
     </>
   )
 }

@@ -32,9 +32,11 @@ can be declared in `RouteSummary`, branched on in `RoutePicker`, and never
 written by the exporter: it compiles, it lints, and the branch is dead. That
 happened with `stepsBesideShortcut`, so:
 
-- every field declared in `routes.ts` is actually exported
-- every `route.<field>` the component reads is actually exported
-- every exported trip has a GeoJSON, with no orphans
+- every field the `RouteOk`, `Saved` and `summary` TypeScript types declare is
+  actually returned by `plan_route`
+- every `summary.<field>` and `saved.<field>` `RouteResult.tsx` reads is
+  actually returned
+- every fixture trip has a GeoJSON, with no orphans
 - each GeoJSON's geometry matches its summary row
 - every declared tool is dispatchable, and the reverse
 - the schema advertises no parameter `plan_route` does not accept
@@ -42,15 +44,21 @@ happened with `stepsBesideShortcut`, so:
 - the step caveat is in `tool_schema.json` too, not only in `SKILL.md`, since
   a caller may wire up the declarations without ever reading the skill
 
-To see it work, delete `"stepsBesideShortcut"` from `scripts/route_examples.py`,
-re-export, and watch two tests name the field.
+To see it work, make `RouteResult.tsx` read `summary.totallyMadeUp` and watch
+a test name it.
 
 ## 3. Frontend smoke — `smoke_frontend.mjs`
 
-Drives the real page in headless Chrome over CDP and asserts what a user sees:
-both trips listed, the Clark card reporting its lawn crossing and its nearby
-steps and never claiming step-free, the garage card arriving at the lift, no
+Drives the real page in headless Chrome over CDP, against a running planner
+service, and asserts what a user sees: the place list arrives from the API,
+the smarter route reaches the garage lift and says what it saved, flipping the
+switch produces a different and longer route ending at the building centre, an
+ambiguous name offers its candidates instead of being resolved silently, no
 4xx and no console errors.
+
+Two `role=switch` elements exist — campus data, and the planner — so every
+selector is scoped to the form. An unscoped `querySelector` toggles the wrong
+one and the test passes anyway; that happened.
 
 Headless Chrome needs `--use-angle=swiftshader`, otherwise MapLibre renders
 nothing and every map assertion passes against a blank canvas.

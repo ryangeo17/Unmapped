@@ -72,7 +72,7 @@ class Places:
             return None, [f["properties"]["name"] for f in hits]
         return None, []
 
-    def entrances(self, feature):
+    def entrances(self, feature, lifts=True):
         """Points that count as a way into this place.
 
         A lift inside the footprint counts: for a garage it is the whole point,
@@ -97,8 +97,9 @@ class Places:
             pt = e["geometry"]["coordinates"]
             if label.startswith(name) or (inside(pt) and not claimed_elsewhere(label)):
                 found.append({"point": pt, "label": label, "kind": "entrance"})
-        # A lift into a car park is a doorway like any other.
-        for e in self.elevators:
+        # A lift into a car park is a doorway like any other — but only the
+        # smarter search is allowed to notice, since no signage points at it.
+        for e in self.elevators if lifts else ():
             label = e["properties"].get("description") or "lift"
             pt = e["geometry"]["coordinates"]
             if label.startswith(name) or (inside(pt) and not claimed_elsewhere(label)):

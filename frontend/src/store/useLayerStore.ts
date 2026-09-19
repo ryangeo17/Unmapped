@@ -1,17 +1,18 @@
 import { create } from 'zustand'
+import type { RouteOk } from '../api/planner'
 
 type LayerState = {
   /** false = online basemap only, true = render the local campus data on top. */
   showLocalData: boolean
   toggleLocalData: () => void
-  /** Trip id, or null for none. */
-  selectedTrip: string | null
-  selectTrip: (trip: string | null) => void
+  /** The solved route currently drawn, or null. */
+  route: RouteOk | null
+  setRoute: (route: RouteOk | null) => void
 }
 
 export const useLayerStore = create<LayerState>((set) => ({
   showLocalData: false,
   toggleLocalData: () => set((s) => ({ showLocalData: !s.showLocalData })),
-  selectedTrip: null,
-  selectTrip: (trip) => set({ selectedTrip: trip }),
+  route: null,
+  setRoute: (route) => set({ route }),
 }))

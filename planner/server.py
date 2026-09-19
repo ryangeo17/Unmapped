@@ -2,7 +2,10 @@
 """HTTP front for the planner.
 
     pip install fastapi uvicorn
-    uvicorn planner.server:app --reload
+    uvicorn planner.server:app --reload --host 127.0.0.1
+
+Bind explicitly: on macOS "localhost" resolves to ::1 first, and a server
+listening only on 127.0.0.1 refuses the browser's connection.
 
 The graph is loaded once at startup, not per request.
 """
@@ -18,7 +21,7 @@ app = FastAPI(title="Campus route planner")
 # The frontend is served from another origin in development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -27,6 +30,7 @@ app.add_middleware(
 class RouteRequest(BaseModel):
     origin: str
     destination: str
+    smarter: bool = True
 
 
 @app.on_event("startup")
@@ -41,4 +45,4 @@ def get_places():
 
 @app.post("/route")
 def post_route(req: RouteRequest):
-    return plan_route(req.origin, req.destination)
+    return plan_route(req.origin, req.destination, req.smarter)

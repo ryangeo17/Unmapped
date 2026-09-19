@@ -20,10 +20,10 @@ from planner.geometry import metres          # noqa: E402
 from planner.plan import plan_route          # noqa: E402
 from planner.tools import TOOLS, declarations  # noqa: E402
 
-ROUTES = os.path.join(ROOT, "frontend", "public", "data", "routes")
-ROUTES_TS = os.path.join(ROOT, "frontend", "src", "lib", "routes.ts")
-PICKER = os.path.join(ROOT, "frontend", "src", "components", "route",
-                      "RoutePicker.tsx")
+ROUTES = os.path.join(ROOT, "tests", "fixtures")
+API_TS = os.path.join(ROOT, "frontend", "src", "api", "planner.ts")
+RESULT_TSX = os.path.join(ROOT, "frontend", "src", "components", "route",
+                          "RouteResult.tsx")
 
 
 def summary():
@@ -32,25 +32,27 @@ def summary():
 
 
 class TestExportedFiles(unittest.TestCase):
+    def _path(self, row):
+        return os.path.join(ROUTES, "%s.%s.geojson" % (row["trip"], row["mode"]))
+
     def test_every_trip_has_a_geojson(self):
         for row in summary():
             if row["status"] != "ok":
                 continue
-            path = os.path.join(ROUTES, "%s.geojson" % row["trip"])
-            self.assertTrue(os.path.exists(path), path)
+            self.assertTrue(os.path.exists(self._path(row)), self._path(row))
 
     def test_no_orphan_geojson(self):
-        trips = {r["trip"] for r in summary()}
+        want = {"%s.%s.geojson" % (r["trip"], r["mode"]) for r in summary()}
         for name in os.listdir(ROUTES):
             if name.endswith(".geojson"):
-                self.assertIn(name[:-len(".geojson")], trips,
+                self.assertIn(name, want,
                               "%s is not in the summary; stale export?" % name)
 
     def test_geojson_matches_its_summary_row(self):
         for row in summary():
             if row["status"] != "ok":
                 continue
-            with open(os.path.join(ROUTES, "%s.geojson" % row["trip"])) as fh:
+            with open(self._path(row)) as fh:
                 feature = json.load(fh)["features"][0]
             self.assertEqual(feature["properties"]["metres"], row["metres"])
             coords = feature["geometry"]["coordinates"]
@@ -58,38 +60,54 @@ class TestExportedFiles(unittest.TestCase):
             self.assertAlmostEqual(drawn, row["metres"], delta=0.2)
 
 class TestFrontendContract(unittest.TestCase):
-    """Fields the frontend reads must actually be exported."""
+    """The TypeScript view of a route must match what the planner returns.
 
-    def _declared_fields(self):
-        with open(ROUTES_TS) as fh:
+    The frontend calls the service now, so the contract is the RouteOk type
+    against a live plan_route result rather than a file on disk.
+    """
+
+    def _ts_block(self, name):
+        with open(API_TS) as fh:
             src = fh.read()
-        block = re.search(r"export type RouteSummary = \{(.*?)\n\}", src, re.S)
-        self.assertIsNotNone(block, "RouteSummary type not found")
-        return {m.group(1) for m in
-                re.finditer(r"^\s*(\w+)\??:", block.group(1), re.M)}
+        block = re.search(r"export type %s = \{(.*?)\n\}" % name, src, re.S)
+        self.assertIsNotNone(block, "%s not found in planner.ts" % name)
+        return block.group(1)
 
-    def test_declared_fields_are_exported(self):
-        declared = self._declared_fields()
-        exported = set()
-        for row in summary():
-            exported |= set(row)
-        missing = declared - exported
-        self.assertFalse(
-            missing,
-            "declared in routes.ts but never written by the exporter: %s"
-            % sorted(missing))
-
-    def test_fields_the_ui_branches_on_are_exported(self):
-        """Catches a live branch reading a field nothing produces."""
-        with open(PICKER) as fh:
-            used = set(re.findall(r"route\.(\w+)", fh.read()))
-        exported = set()
-        for row in summary():
-            exported |= set(row)
-        missing = used - exported
+    def test_route_type_fields_are_all_returned(self):
+        declared = {m.group(1) for m in
+                    re.finditer(r"^  (\w+)\??:", self._ts_block("RouteOk"), re.M)}
+        returned = set(plan_route("Malone Hall", "Clark Hall"))
+        missing = declared - returned
         self.assertFalse(missing,
-                         "RoutePicker reads fields that are never exported: %s"
+                         "RouteOk declares fields plan_route never returns: %s"
                          % sorted(missing))
+
+    def test_summary_type_fields_are_all_returned(self):
+        block = re.search(r"summary: \{(.*?)\n  \}",
+                          self._ts_block("RouteOk"), re.S).group(1)
+        declared = {m.group(1) for m in re.finditer(r"(\w+):", block)}
+        returned = set(plan_route("Malone Hall", "Clark Hall")["summary"])
+        self.assertFalse(declared - returned, sorted(declared - returned))
+
+    def test_saved_type_fields_are_all_returned(self):
+        declared = {m.group(1) for m in
+                    re.finditer(r"^  (\w+):", self._ts_block("Saved"), re.M)}
+        returned = set(plan_route("Malone Hall", "Clark Hall")["savedBySmarter"])
+        self.assertFalse(declared - returned, sorted(declared - returned))
+
+    def test_fields_the_ui_branches_on_are_returned(self):
+        """Catches a live branch reading something nothing produces — the bug
+        that prompted this whole file."""
+        with open(RESULT_TSX) as fh:
+            src = fh.read()
+        route = plan_route("Malone Hall", "Clark Hall")
+        for expr, available in (("summary", route["summary"]),
+                                ("saved", route["savedBySmarter"])):
+            used = set(re.findall(r"\b%s\.(\w+)" % expr, src))
+            missing = used - set(available)
+            self.assertFalse(missing,
+                             "RouteResult reads %s.%s which is never returned"
+                             % (expr, sorted(missing)))
 
 
 class TestToolContract(unittest.TestCase):

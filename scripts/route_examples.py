@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Solve the example walking trips and write them out for the frontend.
+"""Solve the example walking trips and write them out as golden fixtures.
 
     python3 scripts/route_examples.py
 
-One route per trip. The planner itself, its contract and its limits live in
-../planner/SKILL.md.
+The frontend no longer reads these — it asks the planner service for routes
+between whatever the user typed. They stay as a regression baseline, one file
+per trip per switch position, so a change in the planner shows up as a diff.
 """
 import json
 import os
@@ -15,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from planner.plan import plan_route  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "..", "frontend", "public", "data", "routes")
+                   "..", "tests", "fixtures")
 
 TRIPS = [
     ("malone-to-clark", "Malone Hall", "Clark Hall"),
@@ -25,7 +26,8 @@ TRIPS = [
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    keep = {"%s.geojson" % slug for slug, _, _ in TRIPS} | {"_summary.json", "README.md"}
+    keep = {"%s.%s.geojson" % (slug, m) for slug, _, _ in TRIPS
+            for m in ("smarter", "plain")} | {"_summary.json", "README.md"}
     for stale in os.listdir(OUT):
         if stale not in keep:
             os.remove(os.path.join(OUT, stale))
@@ -33,11 +35,12 @@ def main():
 
     summary = []
     for slug, origin, dest in TRIPS:
-        route = plan_route(origin, dest)
-        entry = {"trip": slug, "from": origin, "to": dest,
-                 "status": route["status"]}
+      for mode, smarter in (("smarter", True), ("plain", False)):
+        route = plan_route(origin, dest, smarter)
+        entry = {"trip": slug, "mode": mode, "smarter": smarter,
+                 "from": origin, "to": dest, "status": route["status"]}
         if route["status"] != "ok":
-            print("%-30s %s" % (slug, route["status"]))
+            print("%-30s %-8s %s" % (slug, mode, route["status"]))
             summary.append(entry)
             continue
 
@@ -52,17 +55,18 @@ def main():
             "stepsBesideShortcut": s["stepsBesideShortcut"],
             "shortcutMetres": s["shortcutMetres"],
             "shortcutSpaces": s["shortcutSpaces"],
+            "savedBySmarter": route["savedBySmarter"],
             "warnings": route["warnings"],
         })
         note = ""
         if s["shortcutMetres"]:
             note = "  cuts %.0fm across %s" % (s["shortcutMetres"],
                                                ", ".join(s["shortcutSpaces"]))
-        print("%-30s %5.1f min  %5.0f m  %d steps -> %s%s"
-              % (slug, s["minutes"], s["metres"], s["steps"],
+        print("%-30s %-8s %5.1f min  %5.0f m  %d steps -> %s%s"
+              % (slug, mode, s["minutes"], s["metres"], s["steps"],
                  route["destination"]["arrival"], note))
 
-        with open(os.path.join(OUT, "%s.geojson" % slug), "w") as fh:
+        with open(os.path.join(OUT, "%s.%s.geojson" % (slug, mode)), "w") as fh:
             json.dump({"type": "FeatureCollection",
                        "features": [{"type": "Feature", "properties": entry,
                                      "geometry": route["geometry"]}]},
