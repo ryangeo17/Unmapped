@@ -34,22 +34,25 @@ names, about 9 KB — so it can resolve free text. The graph stays server-side.
 
 ## Two things this planner models that the official network does not
 
+Both are always on. They are priced into the search rather than offered as
+options, so A* takes a shortcut or a side door only when it is genuinely
+faster. There is nothing to configure and nothing for a model to choose.
+
 **Lawn shortcuts.** People cut across quads; the official network routes around
 them. 933 straight edges cross open lawn where the line stays on grass and
-crosses no building. They are priced at 1.05 m/s against the 1.31 m/s the
-network's own walktime implies, so one is only taken when it genuinely saves
-time. `allow_shortcuts=False` stays on paved network — useful in rain, at
-night, or to show a user what the shortcut buys.
+crosses no building, priced at 1.05 m/s against the 1.31 m/s the network's own
+walktime implies. Malone → Clark comes back 122 m instead of 149 m because of
+one 80 m diagonal over Decker Quad.
 
 **Any entrance counts.** Both ends of the trip may use any door, and a lift
 inside a building counts as a door. San Martin Garage has no entryway record at
-all, so aiming at the building centre walks you 169 m further round the block
-instead of stopping at `San Martin Garage Elevator EL2`.
+all, so aiming at the building centre would walk you 169 m further round the
+block instead of stopping at `San Martin Garage Elevator EL2`.
 
 ## Calling it
 
 ```
-plan_route(origin: str, destination: str, shortcuts: bool = True) -> dict
+plan_route(origin: str, destination: str) -> dict
 places().index() -> list[dict]      # name, kind, use, alias
 ```
 
@@ -65,7 +68,6 @@ places().index() -> list[dict]      # name, kind, use, alias
 ```json
 {
   "status": "ok",
-  "shortcuts": true,
   "origin":      {"query": "Malone Hall", "resolved": "Malone Hall",
                   "arrival": "Malone Hall North", "kind": "entrance",
                   "point": [-76.62087, 39.32644]},

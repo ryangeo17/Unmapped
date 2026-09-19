@@ -27,7 +27,6 @@ app.add_middleware(
 class RouteRequest(BaseModel):
     origin: str
     destination: str
-    allow_shortcuts: bool = True
 
 
 @app.on_event("startup")
@@ -42,4 +41,4 @@ def get_places():
 
 @app.post("/route")
 def post_route(req: RouteRequest):
-    return plan_route(req.origin, req.destination, req.allow_shortcuts)
+    return plan_route(req.origin, req.destination)

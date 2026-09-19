@@ -47,7 +47,7 @@ and not a per-request cost. Rerun after the campus data changes:
     uvicorn planner.server:app --reload
 
     GET  /places      every routable name, ~9 KB
-    POST /route       {origin, destination, allow_shortcuts?}
+    POST /route       {origin, destination}
 
 ## Give it to a model
 

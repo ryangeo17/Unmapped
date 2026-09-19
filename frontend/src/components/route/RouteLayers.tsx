@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { Layer, Source } from 'react-map-gl/maplibre'
 import type { FeatureCollection } from 'geojson'
-import { useTripRoutes } from '../../hooks/useRoutes'
-import { CASING, MODE_STYLE } from '../../lib/routes'
+import { useTripRoute } from '../../hooks/useRoutes'
+import { ROUTE_CASING, ROUTE_COLOR, ROUTE_WIDTH } from '../../lib/routes'
 import { useLayerStore } from '../../store/useLayerStore'
 
 function endpointsOf(line: FeatureCollection | undefined): FeatureCollection | null {
@@ -28,16 +28,12 @@ function endpointsOf(line: FeatureCollection | undefined): FeatureCollection | n
   }
 }
 
-/** One route at a time: the selected trip in the selected mode. */
 export default function RouteLayers() {
   const trip = useLayerStore((s) => s.selectedTrip)
-  const mode = useLayerStore((s) => s.selectedMode)
-  const byMode = useTripRoutes(trip)
-  const data = byMode[mode]
+  const { data } = useTripRoute(trip)
   const endpoints = useMemo(() => endpointsOf(data), [data])
 
   if (!trip || !data) return null
-  const { color, width } = MODE_STYLE[mode]
 
   return (
     <>
@@ -48,13 +44,17 @@ export default function RouteLayers() {
           id="route-casing"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{ 'line-color': CASING, 'line-width': width + 6, 'line-opacity': 0.95 }}
+          paint={{
+            'line-color': ROUTE_CASING,
+            'line-width': ROUTE_WIDTH + 6,
+            'line-opacity': 0.95,
+          }}
         />
         <Layer
           id="route-line"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{ 'line-color': color, 'line-width': width }}
+          paint={{ 'line-color': ROUTE_COLOR, 'line-width': ROUTE_WIDTH }}
         />
       </Source>
 

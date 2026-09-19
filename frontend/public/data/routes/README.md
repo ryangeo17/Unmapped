@@ -1,6 +1,6 @@
 # Example routes
 
-Two walking trips, solved by the `planner` package.
+Two walking trips, one route each, solved by the `planner` package.
 `scripts/route_examples.py` is a thin wrapper that writes these files; the
 planner itself, its contract and its limits live in [`planner/SKILL.md`](../../../../planner/SKILL.md).
 
@@ -9,16 +9,13 @@ planner itself, its contract and its limits live in [`planner/SKILL.md`](../../.
 **Walking only.** Accessibility routing is a separate feature and produces no
 files here.
 
-| | Walking | Walking (shortcuts) |
+| | Route | Why it is shorter than the paved line |
 |---|---|---|
-| **Malone → Clark** | 1.9 min, 149 m, 3 steps | **1.8 min, 122 m**, cuts 80 m across Decker Quad |
-| **Malone → San Martin Garage** | 8.2 min, 648 m | 8.2 min, 648 m |
+| **Malone → Clark** | 1.8 min, 122 m | 80 m diagonal across Decker Quad, against 149 m and three steps on pavement |
+| **Malone → San Martin Garage** | 8.2 min, 648 m | finishes at `San Martin Garage Elevator EL2`; the building centre is 169 m further round the block |
 
-Malone → Clark is the one that shows the shortcut earning its place: the paved
-line takes three steps and 27 m more than the diagonal across Decker Quad. On
-the garage trip the two are identical — the lawns are not on the way — and the
-whole saving there comes from finishing at `San Martin Garage Elevator EL2`
-rather than at the building centre, which is 169 m further round the block.
+Lawn shortcuts and entrance choice are priced into the search, not offered as
+options, so there is one route per trip rather than a set of variants.
 
 ## Caveats
 

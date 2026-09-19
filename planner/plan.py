@@ -36,11 +36,9 @@ def places():
     return _load()["places"]
 
 
-def _graph(shortcuts):
+def _graph():
     adj = collections.defaultdict(list)
     for e in _load()["edges"]:
-        if e["p"].get("shortcut") and not shortcuts:
-            continue
         edge = (e["min"], e["m"], e["p"])
         adj[e["a"]].append((e["b"], edge))
         adj[e["b"]].append((e["a"], edge))
@@ -112,10 +110,12 @@ def _steps(path, edges):
     return out
 
 
-def plan_route(origin, destination, shortcuts=True):
-    """Plan one walking route between two free-text place names.
+def plan_route(origin, destination):
+    """Plan the walking route between two free-text place names.
 
-    `shortcuts` allows straight lines across open lawn where they are faster.
+    Lawn shortcuts and every entrance are always in play; they are priced, not
+    optional, so A* takes a shortcut or a side door only when it is actually
+    faster.
     """
     pl = places()
 
@@ -133,7 +133,7 @@ def plan_route(origin, destination, shortcuts=True):
         return {"status": "error", "field": field,
                 "error": "could not resolve %s %r" % (field, query)}
 
-    adj = _graph(shortcuts)
+    adj = _graph()
     start_at = {_nearest(adj, d["point"]): d for d in pl.entrances(a)}
     end_at = {_nearest(adj, d["point"]): d for d in pl.entrances(b)}
 
@@ -162,7 +162,6 @@ def plan_route(origin, destination, shortcuts=True):
     dest_door = end_at[path[-1]]
     return {
         "status": "ok",
-        "shortcuts": shortcuts,
         "origin": {
             "query": origin, "resolved": a["properties"]["name"],
             "arrival": origin_door["label"], "kind": origin_door["kind"],

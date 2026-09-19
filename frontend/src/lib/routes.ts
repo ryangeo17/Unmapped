@@ -1,14 +1,14 @@
 // Example walking routes solved by the planner package; see planner/SKILL.md.
+// One route per trip: lawn shortcuts and the nearest usable entrance are
+// priced into the search, not offered as options.
 // Accessibility routing is a separate feature and is not represented here.
-
-export type RouteMode = 'walking' | 'smart'
 
 export type RouteSummary = {
   trip: string
-  mode: RouteMode
-  modeLabel: string
+  label: string
   from: string
   to: string
+  toKind: 'entrance' | 'lift' | 'centre'
   status: string
   minutes?: number
   metres?: number
@@ -16,28 +16,14 @@ export type RouteSummary = {
   steps?: number
   shortcutMetres?: number
   shortcutSpaces?: string[]
-  grades?: Record<string, number>
+  warnings?: string[]
 }
 
-export const TRIPS = [
-  { id: 'malone-to-clark', label: 'Malone Hall → Clark Hall' },
-  { id: 'malone-to-san-martin-garage', label: 'Malone Hall → San Martin Garage' },
-] as const
+// Outside the green/amber/red the Pathways layer uses for accessibility
+// grading, so the route still reads as a route over the campus data.
+export const ROUTE_COLOR = '#db2777'
+export const ROUTE_WIDTH = 5
+export const ROUTE_CASING = '#ffffff'
 
-export const MODE_ORDER: RouteMode[] = ['walking', 'smart']
-
-// Deliberately outside the green/amber/red the Pathways layer uses for its
-// accessibility grading. A route drawn in those colours vanishes into the
-// network as soon as the campus data is switched on. Each line also gets a
-// white casing underneath so it reads as a route over any background.
-export const MODE_STYLE: Record<RouteMode, { color: string; width: number; label: string }> = {
-  walking: { color: '#111827', width: 5, label: 'Walking' },
-  smart: { color: '#db2777', width: 5, label: 'Walking (shortcuts)' },
-}
-
-export const CASING = '#ffffff'
-
-export const routeUrl = (trip: string, mode: RouteMode) =>
-  `/data/routes/${trip}.${mode}.geojson`
-
+export const routeUrl = (trip: string) => `/data/routes/${trip}.geojson`
 export const SUMMARY_URL = '/data/routes/_summary.json'

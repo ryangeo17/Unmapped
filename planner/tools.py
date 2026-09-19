@@ -11,8 +11,7 @@ from .plan import plan_route, places
 SCHEMA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tool_schema.json")
 
 TOOLS = {
-    "plan_route": lambda a: plan_route(a["origin"], a["destination"],
-                                       a.get("allow_shortcuts", True)),
+    "plan_route": lambda a: plan_route(a["origin"], a["destination"]),
     "list_places": lambda a: {"places": places().index()},
 }
 
