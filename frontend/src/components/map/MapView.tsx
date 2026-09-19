@@ -1,5 +1,7 @@
 import Map, { NavigationControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { useLayerStore } from '../../store/useLayerStore'
+import CampusOverlay from './CampusOverlay'
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
 
@@ -15,6 +17,8 @@ const CAMPUS_BOUNDS: [number, number, number, number] = [
 ]
 
 export default function MapView() {
+  const showLocalData = useLayerStore((s) => s.showLocalData)
+
   return (
     <Map
       id="main"
@@ -28,6 +32,7 @@ export default function MapView() {
       style={{ width: '100%', height: '100%' }}
     >
       <NavigationControl position="top-right" />
+      {showLocalData && <CampusOverlay />}
     </Map>
   )
 }
