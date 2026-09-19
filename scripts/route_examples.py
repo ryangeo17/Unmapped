@@ -49,6 +49,7 @@ def main():
             "toKind": route["destination"]["kind"],
             "minutes": s["minutes"], "metres": s["metres"], "feet": s["feet"],
             "steps": s["steps"],
+            "stepsBesideShortcut": s["stepsBesideShortcut"],
             "shortcutMetres": s["shortcutMetres"],
             "shortcutSpaces": s["shortcutSpaces"],
             "warnings": route["warnings"],

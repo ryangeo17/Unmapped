@@ -10,6 +10,7 @@
     "metres": 122.4,
     "feet": 401,
     "steps": 0,
+    "stepsBesideShortcut": 3,
     "shortcutMetres": 79.5,
     "shortcutSpaces": [
       "Decker Quad"
@@ -30,6 +31,7 @@
     "metres": 647.5,
     "feet": 2124,
     "steps": 0,
+    "stepsBesideShortcut": 0,
     "shortcutMetres": 0,
     "shortcutSpaces": [],
     "warnings": []

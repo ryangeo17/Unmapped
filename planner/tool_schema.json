@@ -3,7 +3,7 @@
   "functionDeclarations": [
     {
       "name": "plan_route",
-      "description": "Plan the walking route across the JHU Homewood campus. Returns real geometry from A* over the campus path network, with distance, time and a leg breakdown. The route automatically cuts across open lawns where that is faster and finishes at whichever entrance or car-park lift is nearest, so there is nothing to configure. Always call this rather than describing a route from memory; never write or adjust coordinates yourself. This plans walking routes only and knows nothing about wheelchair access.",
+      "description": "Plan the walking route across the JHU Homewood campus. Returns real geometry from A* over the campus path network, with distance, time and a leg breakdown. The route automatically cuts across open lawns where that is faster and finishes at whichever entrance or car-park lift is nearest, so there is nothing to configure. Always call this rather than describing a route from memory; never write or adjust coordinates yourself. This plans walking routes only and knows nothing about wheelchair access. Repeat every string in the result's `warnings` to the user. A route whose `summary.stepsBesideShortcut` is non-zero must never be described as step-free, however low `summary.steps` is: a shortcut can land on the far side of a flight, and this data holds no elevation.",
       "parameters": {
         "type": "object",
         "properties": {
