@@ -1,0 +1,3 @@
+layer,expression,where,minScale,maxScale,placement,fontFamily,fontSize,color
+Facilities,$feature.NAME,,2000,,esriServerPolygonPlacementAlwaysHorizontal,Arial,10,"0,45,114,255"
+Exterior Spaces,$feature.NAME,,,,esriServerPolygonPlacementAlwaysHorizontal,Arial,8,"39,94,61,255"
