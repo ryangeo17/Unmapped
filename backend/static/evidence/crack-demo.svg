@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Demo robot evidence showing a pavement crack</title>
+  <desc id="desc">Synthetic placeholder visualization, not a real robot photograph.</desc>
+  <defs>
+    <linearGradient id="pavement" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#75808b"/>
+      <stop offset="1" stop-color="#404a54"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#pavement)"/>
+  <path d="M510 40 470 145 535 218 450 300 492 382 415 500" fill="none" stroke="#17212b" stroke-width="19"/>
+  <path d="M482 382 570 420 603 497M469 145 386 190 340 248" fill="none" stroke="#222c35" stroke-width="9"/>
+  <rect x="24" y="24" width="350" height="56" rx="12" fill="#061e3f" opacity=".9"/>
+  <text x="46" y="61" fill="white" font-family="system-ui,sans-serif" font-size="25" font-weight="700">DEMO ROBOT EVIDENCE " CRACK</text>
+  <text x="28" y="515" fill="white" font-family="system-ui,sans-serif" font-size="20">Synthetic placeholder  replace with survey capture</text>
+</svg>

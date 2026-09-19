@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: unmapped-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://unmapped.example.com
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/unmapped.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+    disk:
+      name: unmapped-data
+      mountPath: /var/data
+      sizeGB: 1

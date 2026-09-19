@@ -1,0 +1,41 @@
+[
+  {
+    "id": "hazard-brick-roughness",
+    "title": "Uneven brick paving",
+    "description": "Several raised bricks can catch small wheels near Levering Hall.",
+    "severity": 2,
+    "edge_id": "e-quad-levering",
+    "latitude": 39.32952,
+    "longitude": -76.621,
+    "active": true,
+    "kind": "roughness",
+    "verified": true,
+    "evidence": "[\"/evidence/crack-demo.svg\"]"
+  },
+  {
+    "id": "hazard-rec-lighting",
+    "title": "Limited nighttime lighting",
+    "description": "Lighting is sparse on the eastern recreation-center path.",
+    "severity": 2,
+    "edge_id": "e-rec-brody",
+    "latitude": 39.3291,
+    "longitude": -76.6202,
+    "active": true,
+    "kind": "lighting",
+    "verified": true,
+    "evidence": "[\"/evidence/pothole-demo.svg\"]"
+  },
+  {
+    "id": "hazard-homewood-closure",
+    "title": "Construction closure",
+    "description": "The direct Quad to Homewood Museum path is closed for construction.",
+    "severity": 3,
+    "edge_id": "e-quad-homewood-closed",
+    "latitude": 39.3305,
+    "longitude": -76.6212,
+    "active": true,
+    "kind": "closure",
+    "verified": false,
+    "evidence": "[]"
+  }
+]

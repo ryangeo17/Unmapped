@@ -1,0 +1,9 @@
+[
+  {"id": "lm-gilman", "name": "Gilman Hall", "description": "Humanities hub and central campus landmark.", "node_id": "gilman", "category": "academic", "accessible": true},
+  {"id": "lm-mse", "name": "MSE Library", "description": "Milton S. Eisenhower Library.", "node_id": "mse", "category": "library", "accessible": true},
+  {"id": "lm-brody", "name": "Brody Learning Commons", "description": "Study and collaboration space.", "node_id": "brody", "category": "library", "accessible": true},
+  {"id": "lm-rec", "name": "O'Connor Recreation Center", "description": "Homewood recreation and fitness center.", "node_id": "rec", "category": "recreation", "accessible": true},
+  {"id": "lm-levering", "name": "Levering Hall", "description": "Dining and student services.", "node_id": "levering", "category": "student-life", "accessible": true},
+  {"id": "lm-malone", "name": "Malone Hall", "description": "Engineering and research building.", "node_id": "malone", "category": "academic", "accessible": true},
+  {"id": "lm-homewood", "name": "Homewood Museum", "description": "Historic campus museum.", "node_id": "homewood", "category": "museum", "accessible": true}
+]

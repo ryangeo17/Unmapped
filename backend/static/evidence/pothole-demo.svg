@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Demo robot evidence showing a pothole</title>
+  <desc id="desc">Synthetic placeholder visualization, not a real robot photograph.</desc>
+  <rect width="960" height="540" fill="#68747d"/>
+  <ellipse cx="510" cy="310" rx="190" ry="105" fill="#252c32"/>
+  <ellipse cx="510" cy="292" rx="145" ry="72" fill="#11181d"/>
+  <path d="M340 287 292 256M666 278l83-44M391 386l-39 61M629 382l53 56" stroke="#303940" stroke-width="12"/>
+  <rect x="24" y="24" width="380" height="56" rx="12" fill="#061e3f" opacity=".9"/>
+  <text x="46" y="61" fill="white" font-family="system-ui,sans-serif" font-size="25" font-weight="700">DEMO ROBOT EVIDENCE " POTHOLE</text>
+  <text x="28" y="515" fill="white" font-family="system-ui,sans-serif" font-size="20">Synthetic placeholder  replace with survey capture</text>
+</svg>

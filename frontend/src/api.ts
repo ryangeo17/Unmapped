@@ -1,0 +1,300 @@
+import type { GraphJob, Hazard, Landmark, LatLng, RouteResult, Submission, SuggestionPayload, TravelMode } from './types'
+
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
+const API_ORIGIN = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : ''
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: 'include',
+    ...init,
+    headers: init?.body instanceof FormData ? init.headers : { 'Content-Type': 'application/json', ...init?.headers },
+  })
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '')
+    let message = raw
+    try {
+      message = JSON.parse(raw).detail || raw
+    } catch {
+      // FastAPI errors are usually JSON, but proxy errors may be plain text.
+    }
+    throw new Error(message || `Request failed (${response.status})`)
+  }
+  return response.json() as Promise<T>
+}
+
+interface Overlay {
+  nodes: { id: string; name: string; latitude: number; longitude: number }[]
+  edges: { id: string; from_node: string; to_node: string; closed: boolean; verified?: boolean }[]
+  hazards: { id: string; edge_id?: string; latitude: number; longitude: number }[]
+}
+
+function getOverlay() {
+  return request<Overlay>('/graph/overlay')
+}
+
+function distanceMeters(a: LatLng, b: LatLng) {
+  const toRadians = (value: number) => (value * Math.PI) / 180
+  const dLat = toRadians(b[0] - a[0])
+  const dLng = toRadians(b[1] - a[1])
+  const value = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(a[0])) * Math.cos(toRadians(b[0])) * Math.sin(dLng / 2) ** 2
+  return 6371000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value))
+}
+
+async function nearestNode(point: LatLng) {
+  const overlay = await getOverlay()
+  return overlay.nodes.reduce((best, node) => {
+    const candidate = distanceMeters(point, [node.latitude, node.longitude])
+    return candidate < best.distance ? { id: node.id, distance: candidate } : best
+  }, { id: overlay.nodes[0]?.id || '', distance: Number.POSITIVE_INFINITY }).id
+}
+
+function mapSubmission(item: Record<string, unknown>): Submission {
+  const rawStatus = String(item.status)
+  const status: Submission['status'] =
+    rawStatus === 'pending' ? 'pending'
+      : rawStatus === 'rejected' ? 'rejected'
+        : rawStatus === 'published' ? 'published' : 'approved'
+  return {
+    id: String(item.id),
+    reference: String(item.tracking_code),
+    description: String(item.name || item.description),
+    reason: String(item.description || ''),
+    createdAt: String(item.created_at),
+    status,
+    coordinates: Array.isArray(item.geometry) ? item.geometry as LatLng[] : [],
+  }
+}
+
+interface BackendJob {
+  id: number
+  submission_id: number
+  status: string
+  result?: unknown
+}
+
+function mapJob(job: BackendJob): GraphJob {
+  const progress = { queued: 10, dispatched: 35, inspecting: 65, succeeded: 100, failed: 100 }[job.status] ?? 0
+  return {
+    id: String(job.id),
+    label: `Robot verification job ${job.id}`,
+    progress,
+    status: job.status === 'succeeded' ? 'complete' : job.status === 'published' ? 'published'
+      : job.status === 'queued' ? 'queued' : 'running',
+  }
+}
+
+export const api = {
+  async searchLandmarks(query: string, signal?: AbortSignal) {
+    const items = await request<Array<{
+      id: string
+      name: string
+      description: string
+      node_id: string
+      latitude: number
+      longitude: number
+    }>>(`/landmarks?query=${encodeURIComponent(query)}`, { signal })
+    return items
+      .filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(query.toLowerCase()))
+      .map<Landmark>((item) => ({
+        id: item.node_id,
+        name: item.name,
+        subtitle: item.description,
+        coordinates: [item.latitude, item.longitude],
+      }))
+  },
+
+  async calculateRoute(input: {
+    start: LatLng
+    destination: LatLng
+    mode: TravelMode
+    time: 'day' | 'night'
+    avoidHazardIds?: string[]
+  }): Promise<RouteResult> {
+    const overlay = await getOverlay()
+    const [start, end] = await Promise.all([nearestNode(input.start), nearestNode(input.destination)])
+    const avoidEdges = overlay.hazards
+      .filter((hazard) => input.avoidHazardIds?.includes(hazard.id) && hazard.edge_id)
+      .map((hazard) => hazard.edge_id as string)
+    const result = await request<{
+      start_node: string
+      end_node: string
+      geometry: [number, number][]
+      edge_ids: string[]
+      steps: { instruction: string; distance_m: number }[]
+      scores: { safety: number; accessibility: number }
+      verified_stats: {
+        distance_m: number
+        estimated_seconds: number
+        verified_percent?: number
+      }
+      hazards: Array<{
+        id: string
+        title: string
+        description?: string
+        severity: number
+        edge_id?: string
+        latitude?: number
+        longitude?: number
+        verified?: boolean
+        evidence?: string[]
+      }>
+      explanation: string[]
+    }>('/routes/compute', {
+      method: 'POST',
+      body: JSON.stringify({
+        start,
+        end,
+        mode: input.mode,
+        nighttime: input.time === 'night',
+        avoid_edges: avoidEdges,
+      }),
+    })
+    const coordinates = result.geometry.map<LatLng>((point) => [point[1], point[0]])
+    const routeHazards = result.hazards.map<Hazard>((hazard) => {
+      const overlayHazard = overlay.hazards.find((item) => item.id === hazard.id)
+      return {
+        id: hazard.id,
+        title: hazard.title,
+        description: hazard.description || 'Robot-observed caution on this path segment.',
+        severity: hazard.severity >= 3 ? 'high' : hazard.severity === 2 ? 'medium' : 'low',
+        coordinates: [
+          hazard.latitude ?? overlayHazard?.latitude ?? coordinates[0][0],
+          hazard.longitude ?? overlayHazard?.longitude ?? coordinates[0][1],
+        ],
+        verified: hazard.verified ?? false,
+        evidence: hazard.evidence?.map((path) => path.startsWith('http') ? path : `${API_ORIGIN}${path}`),
+      }
+    })
+    const nodeMap = new Map(overlay.nodes.map((node) => [node.id, node]))
+    const graphEdges = overlay.edges.map((edge) => {
+      const from = nodeMap.get(edge.from_node)
+      const to = nodeMap.get(edge.to_node)
+      return from && to ? [[from.latitude, from.longitude], [to.latitude, to.longitude]] as LatLng[] : []
+    }).filter((edge) => edge.length === 2)
+    return {
+      id: `${result.start_node}-${result.end_node}-${input.mode}`,
+      coordinates,
+      distanceMeters: result.verified_stats.distance_m,
+      durationMinutes: Math.max(1, Math.round(result.verified_stats.estimated_seconds / 60)),
+      accessibilityScore: Math.round(result.scores.accessibility),
+      safetyScore: Math.round(result.scores.safety),
+      verifiedPercent: Math.round(result.verified_stats.verified_percent ?? 0),
+      explanation: result.explanation.join(' '),
+      steps: result.steps.map((step, index) => ({
+        instruction: step.instruction,
+        distance: `${Math.round(step.distance_m)} m`,
+        coordinates: coordinates[Math.min(index, coordinates.length - 1)],
+      })),
+      hazards: routeHazards,
+      graphEdges,
+      alternatives: [],
+    }
+  },
+
+  async submitSuggestion(payload: SuggestionPayload) {
+    const [fromNode, toNode] = await Promise.all([
+      nearestNode(payload.coordinates[0]),
+      nearestNode(payload.coordinates[payload.coordinates.length - 1]),
+    ])
+    const length = payload.coordinates.slice(1).reduce(
+      (sum, point, index) => sum + distanceMeters(payload.coordinates[index], point),
+      0,
+    )
+    const data = new FormData()
+    data.append('name', payload.description)
+    data.append('description', `${payload.reason}: ${payload.description}`)
+    data.append('reason', payload.reason)
+    data.append('geometry', JSON.stringify(payload.coordinates))
+    data.append('from_node', fromNode)
+    data.append('to_node', toNode)
+    data.append('distance_m', String(Math.max(1, length)))
+    if (payload.photo) data.append('image', payload.photo)
+    const result = await request<{ tracking_code: string }>('/submissions', { method: 'POST', body: data })
+    return { reference: result.tracking_code }
+  },
+
+  adminLogin(password: string) {
+    return request<{ token: string }>('/admin/login', { method: 'POST', body: JSON.stringify({ password }) })
+  },
+
+  async getSubmissions(token: string) {
+    const items = await request<Record<string, unknown>[]>('/admin/submissions', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return items.map(mapSubmission)
+  },
+
+  async updateSubmission(id: string, status: Submission['status'], token: string) {
+    const path = status === 'approved' ? 'approve' : 'reject'
+    const result = await request<Record<string, unknown>>(`/admin/submissions/${id}/${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ note: status === 'rejected' ? 'Rejected during admin review' : 'Approved for robot verification' }),
+    })
+    return mapSubmission((result.submission || result) as Record<string, unknown>)
+  },
+
+  async createGraphJob(token: string) {
+    const jobs = await request<BackendJob[]>('/admin/robot-jobs', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!jobs.length) throw new Error('Approve a submission before creating a robot job.')
+    return mapJob(jobs[0])
+  },
+
+  async getGraphJob(id: string, token: string) {
+    const jobs = await request<BackendJob[]>('/admin/robot-jobs', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const job = jobs.find((item) => String(item.id) === id)
+    if (!job) throw new Error('Robot job not found.')
+    return mapJob(job)
+  },
+
+  async simulateGraphJob(id: string, token: string) {
+    const headers = { Authorization: `Bearer ${token}` }
+    const jobs = await request<BackendJob[]>('/admin/robot-jobs', { headers })
+    let job = jobs.find((item) => String(item.id) === id)
+    if (!job) throw new Error('Robot job not found.')
+    if (job.status === 'queued') {
+      job = await request<BackendJob>(`/admin/robot-jobs/${id}/transition`, {
+        method: 'POST', headers, body: JSON.stringify({ status: 'dispatched' }),
+      })
+    }
+    if (job.status === 'dispatched') {
+      job = await request<BackendJob>(`/admin/robot-jobs/${id}/transition`, {
+        method: 'POST', headers, body: JSON.stringify({ status: 'inspecting' }),
+      })
+    }
+    const completed = await request<BackendJob>(`/admin/robot-jobs/${id}/simulate-result`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        success: true,
+        surface: 'paved',
+        roughness: 0.04,
+        slope: 0.01,
+        note: 'Automated demo robot pipeline completed successfully.',
+      }),
+    })
+    return mapJob(completed)
+  },
+
+  async publishGraphJob(id: string, token: string) {
+    const headers = { Authorization: `Bearer ${token}` }
+    const jobs = await request<BackendJob[]>('/admin/robot-jobs', { headers })
+    const job = jobs.find((item) => String(item.id) === id)
+    if (!job) throw new Error('Robot job not found.')
+    await request(`/admin/submissions/${job.submission_id}/publish`, { method: 'POST', headers })
+    return { ...mapJob(job), status: 'published' as const, progress: 100 }
+  },
+
+  setDemoClosure(closed: boolean, token: string) {
+    return request<{ id: string; closed: boolean }>('/admin/edges/e-rec-mse', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ closed }),
+    })
+  },
+}
