@@ -1,6 +1,7 @@
 import Map, { NavigationControl } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useLayerStore } from '../../store/useLayerStore'
+import RouteLayers from '../route/RouteLayers'
 import CampusOverlay from './CampusOverlay'
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty'
@@ -33,6 +34,11 @@ export default function MapView() {
     >
       <NavigationControl position="top-right" />
       {showLocalData && <CampusOverlay />}
+      {/* MapLibre appends layers in the order they are added at runtime, not
+          in JSX order, so switching the campus data on after a route is shown
+          would bury the route underneath it. Keying on the toggle remounts the
+          route so it is re-added on top. */}
+      <RouteLayers key={showLocalData ? 'over-campus' : 'over-basemap'} />
     </Map>
   )
 }
