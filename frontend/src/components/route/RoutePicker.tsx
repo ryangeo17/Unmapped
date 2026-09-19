@@ -9,6 +9,9 @@ function Detail({ route }: { route: RouteSummary }) {
         <span className="font-medium text-gray-900">{route.minutes?.toFixed(1)} min</span>
         <span className="text-gray-600">{route.metres?.toFixed(0)} m</span>
         {!!route.steps && <span className="text-gray-500">{route.steps} steps</span>}
+        {!route.steps && !!route.stepsBesideShortcut && (
+          <span className="text-gray-500">steps possible</span>
+        )}
       </div>
 
       <dl className="space-y-1 text-xs text-gray-600">

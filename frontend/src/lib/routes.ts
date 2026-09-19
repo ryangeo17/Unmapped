@@ -14,6 +14,7 @@ export type RouteSummary = {
   metres?: number
   feet?: number
   steps?: number
+  stepsBesideShortcut?: number
   shortcutMetres?: number
   shortcutSpaces?: string[]
   warnings?: string[]

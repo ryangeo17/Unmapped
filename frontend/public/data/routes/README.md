@@ -11,7 +11,7 @@ files here.
 
 | | Route | Why it is shorter than the paved line |
 |---|---|---|
-| **Malone → Clark** | 1.8 min, 122 m | 80 m diagonal across Decker Quad, against 149 m and three steps on pavement |
+| **Malone → Clark** | 1.8 min, 122 m | 80 m diagonal across Decker Quad, against 149 m on pavement |
 | **Malone → San Martin Garage** | 8.2 min, 648 m | finishes at `San Martin Garage Elevator EL2`; the building centre is 169 m further round the block |
 
 Lawn shortcuts and entrance choice are priced into the search, not offered as
@@ -26,3 +26,8 @@ options, so there is one route per trip rather than a set of variants.
   are still dangling, so some pavement is unreachable.
 - **Shortcut edges are inferred, not surveyed.** Nothing in this data describes
   the surface of a line drawn across grass.
+- **A shortcut can step around a flight without avoiding it.** The Clark route
+  lands on the far side of a 1.4 m, three-riser link at the door, so it
+  traverses no stair edge, but the basemap has a stair footprint 1.3 m away and
+  the graph holds no elevation. `stepsBesideShortcut` reports this; the route
+  is not step-free.

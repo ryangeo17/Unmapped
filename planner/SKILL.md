@@ -75,6 +75,7 @@ places().index() -> list[dict]      # name, kind, use, alias
                   "arrival": "San Martin Garage Elevator EL2", "kind": "lift",
                   "point": [-76.62352, 39.33062]},
   "summary": {"minutes": 8.2, "metres": 647.5, "feet": 2124, "steps": 0,
+              "stepsBesideShortcut": 0,
               "shortcutMetres": 0, "shortcutSpaces": []},
   "geometry": {"type": "LineString", "coordinates": [[lng, lat], ...]},
   "legs": [{"kind": "paved", "name": null, "metres": 267.6, "minutes": 3.42,
@@ -86,8 +87,15 @@ places().index() -> list[dict]      # name, kind, use, alias
 `geometry` goes straight into a GeoJSON source — do not reformat or round it.
 `legs` are runs of consecutive edges sharing a character: `paved`, `steps`,
 `indoor`, `shortcut`. `name` is the segment's own name where the data has one,
-such as `Gilman Hall Tunnel`, or the lawn being crossed. `summary.steps` counts
-stair risers on the route, as information, not as a filter.
+such as `Gilman Hall Tunnel`, or the lawn being crossed.
+
+`summary.steps` counts stair risers the route actually traverses, as
+information rather than as a filter. `stepsBesideShortcut` is the caveat on
+that number: a shortcut can land on the far side of a short step link, so the
+route never traverses it and `steps` reads 0 while a flight is still there on
+the ground. Malone → Clark does exactly this — it steps around a 1.4 m,
+three-riser link at Clark Hall Main. When `stepsBesideShortcut` is non-zero,
+say steps are possible; never report the route as step-free.
 
 **`ambiguous`** — the query matched several places. Ask which, do not guess.
 
@@ -126,6 +134,9 @@ stair risers on the route, as information, not as a filter.
   dangling, so some pavement is unreachable.
 - **Shortcut edges are inferred, not surveyed.** Nothing in the data describes
   the surface of a line drawn across grass.
+- **The graph is flat.** `hasZ` is false and there is no elevation anywhere, so
+  a shortcut cannot tell which side of a level change it lands on. See
+  `stepsBesideShortcut`.
 
 ## Rebuilding
 

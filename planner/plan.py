@@ -152,11 +152,29 @@ def plan_route(origin, destination):
     risers = sum(e[2].get("riser_count") or 0 for e in edges
                  if e[2].get("pathway_type") == 2)
 
+    # A shortcut can land on the far side of a step link and make the route
+    # look step-free when the ground is not. The graph is flat — hasZ is false
+    # and there is no elevation anywhere in this data — so the only honest
+    # thing is to say a level change may be there rather than report zero.
+    beside = 0
+    for i, edge in enumerate(edges):
+        if not edge[2].get("shortcut"):
+            continue
+        for node in (path[i], path[i + 1]):
+            for _, other in adj[node]:
+                if other[2].get("pathway_type") == 2:
+                    beside = max(beside, other[2].get("riser_count") or 0)
+
     warnings = []
     if shortcut_m:
         warnings.append(
             "%.0f m of this route crosses open lawn (%s)."
             % (shortcut_m, ", ".join(spaces)))
+    if beside:
+        warnings.append(
+            "A shortcut joins the paved network beside a %d-step flight. This "
+            "data has no elevation, so whether you meet those steps depends on "
+            "the level of the grass." % beside)
 
     origin_door = start_at[path[0]]
     dest_door = end_at[path[-1]]
@@ -177,6 +195,7 @@ def plan_route(origin, destination):
             "metres": round(total_m, 1),
             "feet": round(total_m * 3.28084),
             "steps": risers,
+            "stepsBesideShortcut": beside,
             "shortcutMetres": round(shortcut_m, 1),
             "shortcutSpaces": spaces,
         },
