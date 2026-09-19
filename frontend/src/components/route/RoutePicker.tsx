@@ -63,6 +63,10 @@ export default function RoutePicker() {
   const selectedMode = useLayerStore((s) => s.selectedMode)
   const selectMode = useLayerStore((s) => s.selectMode)
 
+  const activeRow = (data ?? []).find(
+    (r) => r.trip === selectedTrip && r.mode === selectedMode && r.status === 'ok',
+  )
+
   const pick = (tripId: string, mode?: RouteMode) => {
     selectTrip(tripId)
     if (mode) selectMode(mode)
@@ -112,10 +116,28 @@ export default function RoutePicker() {
         )
       })}
 
+      {activeRow && (activeRow.shortcutMetres || activeRow.to) && (
+        <div className="space-y-1 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          {!!activeRow.shortcutMetres && (
+            <p>
+              Cuts{' '}
+              <span className="font-medium text-gray-900">
+                {activeRow.shortcutMetres.toFixed(0)} m
+              </span>{' '}
+              across {activeRow.shortcutSpaces?.join(', ')}.
+            </p>
+          )}
+          <p>
+            Arrives at <span className="font-medium text-gray-900">{activeRow.to}</span>.
+          </p>
+        </div>
+      )}
+
       {selectedTrip && (
         <p className="text-xs text-gray-500">
           One mode is drawn at a time — pick a row to switch. Filled dot is the
-          start, hollow dot the destination.
+          start, hollow dot the destination. Shortcut edges cross open lawn and
+          are not wheelchair-safe; they are only offered to walking.
         </p>
       )}
     </section>

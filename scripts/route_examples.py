@@ -17,6 +17,10 @@ import heapq
 import json
 import math
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import shortcuts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "..", "frontend", "public", "data")
@@ -70,6 +74,16 @@ MODES = {
         "allow": lambda p: True,
         "weight": lambda p: 1.0,
     },
+    # Walking, but allowed to cut across lawns and to finish at any entrance
+    # including a garage lift. Explicitly not wheelchair-safe: no surface or
+    # kerb data backs the shortcut edges.
+    "smart": {
+        "label": "Walking (shortcuts)",
+        "allow": lambda p: True,
+        "weight": lambda p: 1.0,
+        "shortcuts": True,
+        "anyEntrance": True,
+    },
     "partial": {
         "label": "Partially accessible",
         "allow": lambda p: NO_STAIRS(p) and GRADE(p) != "NonCompliant",
@@ -83,7 +97,7 @@ MODES = {
 }
 
 
-def build_graph(pathways, allow, weight):
+def build_graph(pathways, allow, weight, extra=()):
     """Undirected adjacency. travel_direction is filled on 16% of segments, so
     treating the network as undirected is the honest reading of this data."""
     graph = collections.defaultdict(list)
@@ -108,6 +122,15 @@ def build_graph(pathways, allow, weight):
                 edge = (minutes * weight(props), seg, props, minutes)
                 graph[ka].append((kb, edge))
                 graph[kb].append((ka, edge))
+
+    for a, b, metres_, minutes_, space in extra:
+        if a not in graph or b not in graph:
+            continue
+        props = {"shortcut": True, "space": space, "pathway_type": 0,
+                 "ihcd2021routesurveycode": None}
+        edge = (minutes_, metres_, props, minutes_)
+        graph[a].append((b, edge))
+        graph[b].append((a, edge))
     return graph
 
 
@@ -115,15 +138,19 @@ def nearest_node(graph, point):
     return min(graph, key=lambda n: metres(n, point))
 
 
-def astar(graph, start, goal):
-    open_set = [(0.0, start)]
+def astar(graph, starts, goals):
+    """Multi-source, multi-target: every entrance of the origin building is a
+    valid place to start, every entrance of the destination a valid finish."""
+    goals = set(goals)
+    open_set = [(0.0, s) for s in starts]
+    heapq.heapify(open_set)
     came = {}
-    g = {start: 0.0}
-    heuristic = lambda n: metres(n, goal) * 3.28084 / WALK_FPS / 60
+    g = {s: 0.0 for s in starts}
+    heuristic = lambda n: min(metres(n, t) for t in goals) * 3.28084 / WALK_FPS / 60
     seen = set()
     while open_set:
         _, node = heapq.heappop(open_set)
-        if node == goal:
+        if node in goals:
             path = [node]
             edges = []
             while node in came:
@@ -149,6 +176,8 @@ def describe(edges):
     minutes = 0.0
     risers = 0
     compliant_m = 0.0
+    shortcut_m = 0.0
+    spaces = set()
     grades = collections.Counter()
     types = collections.Counter()
     for edge in edges:
@@ -157,11 +186,14 @@ def describe(edges):
         minutes += edge[3]
         grades[props.get("ihcd2021routesurveycode")] += 1
         types[props.get("pathway_type")] += 1
+        if props.get("shortcut"):
+            shortcut_m += edge[1]
+            spaces.add(props.get("space"))
         if props.get("ihcd2021routesurveycode") == "FullyCompliant":
             compliant_m += edge[1]
         if props.get("pathway_type") == 2 and props.get("riser_count"):
             risers += props["riser_count"]
-    return total_m, minutes, risers, compliant_m, grades, types
+    return total_m, minutes, risers, compliant_m, shortcut_m, spaces, grades, types
 
 
 def centroid(feature):
@@ -188,11 +220,69 @@ def anchor(facilities, entryways, name, prefer_accessible=None):
     return centroid(building), name + " (building centre)"
 
 
+def _ring_list(feature):
+    geom = feature["geometry"]
+    coords = geom["coordinates"]
+    polys = coords if geom["type"] == "MultiPolygon" else [coords]
+    return [poly[0] for poly in polys]
+
+
+def all_entrances(facilities, entryways, elevators, name):
+    """Every point that counts as a way into this building.
+
+    entryways.facility_id is populated on 4 of 337 rows, so the link has to be
+    made from geometry and names. A lift inside the footprint counts: for a
+    garage it is the whole point, and aiming at the building centre instead
+    walks you the long way round to a door you did not need.
+
+    Footprints overlap — San Martin Center and San Martin Garage sit on top of
+    one another — so a point inside this building is only claimed when its own
+    name does not belong to a different one.
+    """
+    building = next(f for f in facilities if f["properties"]["name"] == name)
+    rs = _ring_list(building)
+    other_names = [f["properties"]["name"] for f in facilities
+                   if f["properties"]["name"] != name]
+
+    def claimed_elsewhere(label):
+        return any(label.startswith(o) for o in other_names)
+
+    def inside(pt):
+        return (any(shortcuts.in_ring(pt, r) for r in rs)
+                or shortcuts.dist_to_rings(pt, rs) < 12.0)
+
+    found = []
+    for feature, default in ((entryways, "entrance"), (elevators, "lift")):
+        for e in feature:
+            pt = e["geometry"]["coordinates"]
+            props = e["properties"]
+            label = props.get("entrance_name") or props.get("description") or default
+            if label.startswith(name):
+                found.append((pt, label))
+            elif inside(pt) and not claimed_elsewhere(label):
+                found.append((pt, label))
+    if not found:
+        found.append((centroid(building), name + " (building centre)"))
+    return found
+
+
 def main():
     pathways = load("Pathways.geojson")
     facilities = load("Facilities.geojson")
     entryways = load("Entryways-All.geojson")
+    elevators = load("Elevators.geojson")
+    exterior = load("Exterior_Spaces.geojson")
+    barriers = load("Polygon_Barriers.geojson")
     os.makedirs(OUT, exist_ok=True)
+
+    nodes = set()
+    for feat in pathways:
+        for line in lines(feat):
+            nodes.add(key(line[0]))
+            nodes.add(key(line[-1]))
+    print("building lawn shortcuts over %d network nodes..." % len(nodes))
+    extra = shortcuts.build(list(nodes), exterior, facilities, barriers)
+    print("  %d shortcut edges" % len(extra))
 
     trips = [
         ("malone-to-clark", "Malone Hall", "Clark Hall"),
@@ -203,22 +293,35 @@ def main():
     for slug, from_name, to_name in trips:
         origin, origin_label = anchor(facilities, entryways, from_name, "Y")
         dest, dest_label = anchor(facilities, entryways, to_name, "Y")
+        from_doors = all_entrances(facilities, entryways, elevators, from_name)
+        to_doors = all_entrances(facilities, entryways, elevators, to_name)
         print("\n=== %s -> %s ===" % (from_name, to_name))
-        print("  from %s" % origin_label)
-        print("  to   %s" % dest_label)
+        print("  single anchor : %s -> %s" % (origin_label, dest_label))
+        print("  all entrances : %d -> %d  (%s)"
+              % (len(from_doors), len(to_doors),
+                 ", ".join(l for _, l in to_doors)[:90]))
 
         for mode, cfg in MODES.items():
-            graph = build_graph(pathways, cfg["allow"], cfg["weight"])
+            graph = build_graph(pathways, cfg["allow"], cfg["weight"],
+                                extra if cfg.get("shortcuts") else ())
             if not graph:
                 continue
-            start = nearest_node(graph, origin)
-            goal = nearest_node(graph, dest)
-            path, edges = astar(graph, start, goal)
+
+            if cfg.get("anyEntrance"):
+                starts = {nearest_node(graph, p) for p, _ in from_doors}
+                goals = {nearest_node(graph, p) for p, _ in to_doors}
+                label_for = {nearest_node(graph, p): l for p, l in to_doors}
+                start_label = from_name + " (any entrance)"
+            else:
+                starts = {nearest_node(graph, origin)}
+                goals = {nearest_node(graph, dest)}
+                label_for = {}
+                start_label = origin_label
+
+            path, edges = astar(graph, starts, goals)
             entry = {
                 "trip": slug, "mode": mode, "modeLabel": cfg["label"],
-                "from": origin_label, "to": dest_label,
-                "snapStart_m": round(metres(start, origin), 1),
-                "snapGoal_m": round(metres(goal, dest), 1),
+                "from": start_label, "to": dest_label,
             }
             if not path:
                 entry["status"] = "no route"
@@ -226,7 +329,10 @@ def main():
                 summary.append(entry)
                 continue
 
-            dist, minutes, risers, compliant_m, grades, types = describe(edges)
+            dist, minutes, risers, compliant_m, shortcut_m, spaces, grades, types = \
+                describe(edges)
+            if label_for:
+                entry["to"] = label_for.get(path[-1], dest_label)
             entry.update({
                 "status": "ok",
                 "minutes": round(minutes, 2),
@@ -235,12 +341,17 @@ def main():
                 "stairSegments": types.get(2, 0),
                 "risers": risers,
                 "fullyCompliantShare": round(compliant_m / dist, 3) if dist else None,
+                "shortcutMetres": round(shortcut_m, 1),
+                "shortcutSpaces": sorted(x for x in spaces if x),
                 "grades": {k: v for k, v in grades.items() if k},
             })
-            print("  %-22s %5.1f min  %5.0f m  stairs %d (%d risers)  "
-                  "fully-compliant %.0f%%  %s"
-                  % (cfg["label"], minutes, dist, types.get(2, 0), risers,
-                     100 * compliant_m / dist if dist else 0, dict(grades)))
+            note = ""
+            if shortcut_m:
+                note = "  cuts %.0fm across %s" % (shortcut_m, ", ".join(entry["shortcutSpaces"]))
+            if label_for:
+                note += "  -> %s" % entry["to"]
+            print("  %-22s %5.1f min  %5.0f m  stairs %d (%d risers)%s"
+                  % (cfg["label"], minutes, dist, types.get(2, 0), risers, note))
 
             geo = {
                 "type": "FeatureCollection",
