@@ -42,6 +42,28 @@ def load_key():
 FAILURES = []
 
 
+def usable(key, model):
+    """Model ids get retired. Say which ones work rather than throwing a 404
+    stack at whoever runs this next."""
+    from google import genai
+    client = genai.Client(api_key=key)
+    try:
+        client.models.get(model="models/%s" % model)
+        return True
+    except Exception as exc:
+        print("model %r is not usable: %s\n" % (model, str(exc)[:160]))
+        try:
+            names = [m.name.replace("models/", "") for m in client.models.list()
+                     if "generateContent" in (m.supported_actions or [])]
+        except Exception:
+            names = []
+        flash = [n for n in names if "flash" in n and "thinking" not in n]
+        print("try one of these, via GEMINI_MODEL=<id> or planner/gemini_agent.py:")
+        for name in (flash or names)[:12]:
+            print("   ", name)
+        return False
+
+
 def check(name, ok, detail=""):
     print("  %s %s%s" % ("ok  " if ok else "FAIL", name,
                          (" — %s" % detail) if detail else ""))
@@ -58,9 +80,14 @@ def main():
         print(".env is gitignored. Get a key at https://aistudio.google.com/apikey")
         return 2
     os.environ["GEMINI_API_KEY"] = key
-    print("using key from %s\n" % source)
+    print("using key from %s" % source)
 
+    from planner import gemini_agent
     from planner.gemini_agent import ask
+    print("model: %s\n" % gemini_agent.MODEL)
+
+    if not usable(key, gemini_agent.MODEL):
+        return 2
 
     print("1. a plain request should call the tool, not answer from memory")
     answer, routes = ask("How do I walk from Malone Hall to Clark Hall?")

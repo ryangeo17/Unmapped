@@ -64,6 +64,11 @@ Test the loop without a key or a bill with `python3 -m unittest discover
 tests` (a stubbed client), and the real round trip with
 `.venv/bin/python tests/live_gemini.py`.
 
+Model ids get retired — `gemini-2.5-flash` began returning 404 to new users —
+so the id is read from `GEMINI_MODEL` and falls back to `gemini-3.6-flash`.
+When a model is gone, `live_gemini.py` lists the ones the key can actually
+reach instead of throwing a 404.
+
 The model gets `tool_schema.json` and `SKILL.md`, and the place index when it
 asks. It never receives the graph or the campus GeoJSON: it resolves the place
 names and explains the result, while A* produces the geometry. `gemini_agent.ask()`

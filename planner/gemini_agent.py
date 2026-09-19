@@ -17,7 +17,9 @@ from google.genai import types
 from .tools import call, declarations
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL = "gemini-2.5-flash"
+# Overridable, because model ids get retired: gemini-2.5-flash started
+# returning 404 with "no longer available to new users".
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 
 
 def system_prompt():

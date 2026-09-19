@@ -81,7 +81,10 @@ an ambiguous name produces a question with the candidates rather than a guess,
 and that a wheelchair question is declined rather than answered from a planner
 that has no accessibility data.
 
-With no key it prints instructions and exits 2 rather than failing.
+With no key it prints instructions and exits 2 rather than failing. It also
+checks the model id before spending anything: when one is retired it lists the
+models the key can reach, rather than throwing a 404 stack. Override with
+`GEMINI_MODEL=<id>`.
 
 ## Not covered
 
