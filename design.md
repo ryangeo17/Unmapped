@@ -66,7 +66,7 @@ Over time, most edges reach high confidence and the robot is only needed for new
 | Backend | Python, FastAPI, OSMnx + NetworkX (graph/routing), `google-genai` (Gemini) |
 | Database | Supabase Postgres (PostGIS if we need spatial queries) |
 | Image storage | Supabase Storage |
-| Frontend | Web app with a map library (Leaflet or Mapbox) |
+| Frontend | React + TypeScript web app with MapLibre GL (see `claude/frontend_design.md`) |
 | Robot | ROS, plus an uploader node that sends observations to the backend over HTTP |
 | Elevation | USGS elevation data for baseline slope before the robot has covered an area |
 | Hosting | Backend on a single always-on instance (Railway / Render / GCP VM). Use a laptop + Cloudflare Tunnel or ngrok during development. |
@@ -93,8 +93,8 @@ The uploader should buffer observations locally and retry, because campus Wi-Fi 
 
 | Who | Owns | First milestone |
 |---|---|---|
-| **Backend** (Ryan) | API, campus graph, routing, Gemini integration, Supabase | Mock API endpoints live at a public URL |
-| **Frontend** (1 person) | Map, search, mode picker, route + explanation display, overlays | Map showing a mock route from the backend |
+| **Backend** (1 person) | API, campus graph, routing, Gemini integration, Supabase | Mock API endpoints live at a public URL |
+| **Frontend** (Ryan) | Map, search, mode picker, route + explanation display, overlays | Map showing a mock route from the backend |
 | **Robot** (2 people) | Driving/data collection, perception capture, uploader, task following | One image + GPS successfully posted to the backend |
 
 **First integration goal:** one photo from the robot shows up as a labelled segment on the frontend map.
