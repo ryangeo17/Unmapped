@@ -18,6 +18,7 @@ interface TripState {
   pinTarget: TripField | null
   // The last trip sent with "Find route". useRoute fetches whatever this is.
   submittedRequest: RouteRequest | null
+  submitCount: number // bumps on every "Find route" click, so it always re-fetches
 
   setPlace: (field: TripField, place: Place | null) => void
   swapPlaces: () => void
@@ -50,6 +51,7 @@ export const useTripStore = create<TripState>()((set) => ({
   compareMode: false,
   pinTarget: null,
   submittedRequest: null,
+  submitCount: 0,
 
   setPlace: (field, place) =>
     set((s) => ({ [field]: place, pinTarget: place && s.pinTarget === field ? null : s.pinTarget })),
@@ -75,6 +77,7 @@ export const useTripStore = create<TripState>()((set) => ({
       s.start && s.end
         ? {
             submittedRequest: { start: s.start, end: s.end, mode: s.mode, preferences: s.preferences, ...departure(s.leaveAt) },
+            submitCount: s.submitCount + 1,
             selectedRouteId: null,
             selectedSegmentIndex: null,
           }

@@ -6,8 +6,9 @@ import { useTripStore } from '../store/tripStore'
 // all share one request and one cached result.
 export function useRoute() {
   const request = useTripStore((s) => s.submittedRequest)
+  const submitCount = useTripStore((s) => s.submitCount)
   return useQuery({
-    queryKey: ['route', request],
+    queryKey: ['route', request, submitCount],
     queryFn: ({ signal }) => getRoute(request!, signal),
     enabled: request !== null,
     staleTime: Infinity, // a route for the same trip doesn't change while you look at it

@@ -10,7 +10,15 @@ import {
   toPlace,
   toRouteResult,
 } from './adapters'
-import { apiFetch } from './client'
+import { ApiError, apiFetch } from './client'
+
+// The backend found no route for this trip and mode (e.g. no step-free path).
+export class NoRouteError extends ApiError {
+  constructor(message: string) {
+    super(message, 404)
+    this.name = 'NoRouteError'
+  }
+}
 
 export async function searchPlaces(q: string, signal?: AbortSignal) {
   const raw = await apiFetch(`/places?q=${encodeURIComponent(q)}`, { signal })
@@ -18,8 +26,14 @@ export async function searchPlaces(q: string, signal?: AbortSignal) {
 }
 
 export async function getRoute(req: RouteRequest, signal?: AbortSignal) {
-  const raw = await apiFetch('/route', { method: 'POST', body: fromRouteRequest(req), signal })
-  return toRouteResult(raw)
+  try {
+    const raw = await apiFetch('/route', { method: 'POST', body: fromRouteRequest(req), signal })
+    return toRouteResult(raw)
+  } catch (err) {
+    // Assumed contract: 404 means "no route possible". Confirm with the backend.
+    if (err instanceof ApiError && err.status === 404) throw new NoRouteError(err.message)
+    throw err
+  }
 }
 
 export async function getAnnotations(signal?: AbortSignal) {

@@ -12,8 +12,9 @@ const sightings = [
   { variant: 'viaA', index: 4, labels: ['well lit', 'blue-light phone'] },
 ] as const
 
-export const observations: Omit<Observation, 'capturedAt'>[] = sightings.flatMap((s) =>
-  trips.map((trip) => ({
+// Ordered trip by trip, so consecutive sightings show different things.
+export const observations: Omit<Observation, 'capturedAt'>[] = trips.flatMap((trip) =>
+  sightings.map((s) => ({
     id: `obs-${trip.id}-${s.variant}-${s.index}`,
     location: midpoint(segmentsWithConditions(trip.id, s.variant)[s.index].segment.geometry),
     labels: [...s.labels],

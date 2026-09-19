@@ -3,6 +3,8 @@ import Map, { NavigationControl, Popup, type MapLayerMouseEvent } from 'react-ma
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useTripStore, type TripField } from '../../store/tripStore'
 import type { LngLat, Place } from '../../types/domain'
+import CompareLayer from './CompareLayer'
+import RobotMarker from './RobotMarker'
 import RouteLayer from './RouteLayer'
 import TripMarkers from './TripMarkers'
 
@@ -25,6 +27,7 @@ function droppedPin([lng, lat]: LngLat): Place {
 
 export default function MapView() {
   const pinning = useTripStore((s) => s.pinTarget !== null && s[s.pinTarget] === null)
+  const compareMode = useTripStore((s) => s.compareMode)
   const [menuAt, setMenuAt] = useState<LngLat | null>(null)
 
   // Clicking the map: if an empty search box was just focused, fill it directly;
@@ -61,8 +64,9 @@ export default function MapView() {
       onClick={onClick}
     >
       <NavigationControl position="top-right" />
-      <RouteLayer />
+      {compareMode ? <CompareLayer /> : <RouteLayer />}
       <TripMarkers />
+      <RobotMarker />
       {menuAt && (
         <Popup
           longitude={menuAt[0]}

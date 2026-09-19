@@ -17,7 +17,13 @@ export default function Explanation({ result }: { result: RouteResult }) {
           ))}
         </ul>
       )}
-      <p className="mt-3 text-xs text-violet-700">Reasoning by Gemini, from data mapped by our robot.</p>
+      {result.fallbackUsed ? (
+        <p className="mt-3 flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+          <span aria-hidden="true">ⓘ</span> Basic route (AI reasoning unavailable right now)
+        </p>
+      ) : (
+        <p className="mt-3 text-xs text-violet-700">Reasoning by Gemini, from data mapped by our robot.</p>
+      )}
     </section>
   )
 }
