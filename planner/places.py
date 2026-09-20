@@ -150,7 +150,13 @@ class Places:
                     # For walking they are one door.
                     continue
                 seen_points[name].add(key)
-                doors[name].append({"point": pt, "label": label, "kind": kind})
+                doors[name].append({
+                    "point": pt, "label": label, "kind": kind,
+                    # A lift is step-free by nature; a door is only step-free
+                    # if the survey says so.
+                    "stepFree": kind == "lift"
+                    or e["properties"].get("accessible_entrance") == "Y",
+                })
 
         # Doors just outside everything, whose name still says where they
         # belong: "Latrobe SW Basement Exit" sits 13.8 m from Latrobe Hall,
@@ -178,6 +184,8 @@ class Places:
                         "point": pt,
                         "label": e["properties"].get(field) or kind,
                         "kind": kind,
+                        "stepFree": kind == "lift"
+                        or e["properties"].get("accessible_entrance") == "Y",
                     })
 
         self._doors = doors
@@ -193,7 +201,7 @@ class Places:
                                 max(xs) + pad, max(ys) + pad)
         return self._bbox[name]
 
-    def entrances(self, feature, lifts=True):
+    def entrances(self, feature, lifts=True, step_free=False):
         """Points that count as a way into this place.
 
         A lift inside a footprint counts: for a garage it is the whole point,
@@ -203,8 +211,9 @@ class Places:
         """
         name = feature["properties"]["name"]
         found = [d for d in self._assign().get(name, [])
-                 if lifts or d["kind"] != "lift"]
+                 if (lifts or d["kind"] != "lift")
+                 and (not step_free or d["stepFree"])]
         if not found:
             return [{"point": centroid(feature), "kind": "centre",
-                     "label": name + " (building centre)"}]
+                     "label": name + " (building centre)", "stepFree": None}]
         return found

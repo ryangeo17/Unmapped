@@ -2,27 +2,34 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import {
   PlannerUnreachable,
-  planRoute,
+  planRoutes,
+  type RouteOk,
   type RouteResult,
 } from '../../api/planner'
 import { usePlaces } from '../../hooks/usePlaces'
 import { useLayerStore } from '../../store/useLayerStore'
-import RouteResultPanel from './RouteResult'
+import RouteOptions from './RouteOptions'
 
 export default function RouteForm() {
   const [origin, setOrigin] = useState('Malone Hall')
   const [destination, setDestination] = useState('San Martin Garage')
   const [smarter, setSmarter] = useState(true)
+  const route = useLayerStore((s) => s.route)
   const setRoute = useLayerStore((s) => s.setRoute)
   const places = usePlaces()
-
   const planned = useRef(false)
 
-  const plan = useMutation<RouteResult, Error, void>({
-    mutationFn: () => planRoute(origin.trim(), destination.trim(), smarter),
-    onSuccess: (result) => {
+  const plan = useMutation<{ routes: RouteResult[] }, Error, void>({
+    mutationFn: () => planRoutes(origin.trim(), destination.trim(), smarter),
+    onSuccess: ({ routes }) => {
       planned.current = true
-      setRoute(result.status === 'ok' ? result : null)
+      // Keep the profile the user was looking at when they flip the switch or
+      // re-plan; otherwise fall back to the first that solved.
+      const keep = routes.find(
+        (r): r is RouteOk => r.status === 'ok' && r.profile === route?.profile,
+      )
+      const first = routes.find((r): r is RouteOk => r.status === 'ok')
+      setRoute(keep ?? first ?? null)
     },
     onError: () => setRoute(null),
   })
@@ -52,19 +59,13 @@ export default function RouteForm() {
     }
   }
 
-  // An ambiguous name comes back with candidates; filling the field from one
-  // of them is faster than making the user retype.
-  const useCandidate = (field: 'origin' | 'destination', name: string) => {
+  const pickCandidate = (field: 'origin' | 'destination', name: string) => {
     if (field === 'origin') setOrigin(name)
     else setDestination(name)
     setTimeout(() => plan.mutate(), 0)
   }
 
-  const field = (
-    label: string,
-    value: string,
-    onChange: (v: string) => void,
-  ) => (
+  const field = (label: string, value: string, onChange: (v: string) => void) => (
     <label className="block">
       <span className="text-xs font-medium text-gray-500">{label}</span>
       <input
@@ -113,8 +114,8 @@ export default function RouteForm() {
             </span>
             <span className="block text-xs text-gray-500">
               {smarter
-                ? 'May cut across lawns and use any door or lift'
-                : 'Official paved network and signed entrances only'}
+                ? 'Walking may cut across lawns and use any door or lift'
+                : 'Walking stays on the paved network and signed entrances'}
             </span>
           </span>
         </label>
@@ -125,7 +126,7 @@ export default function RouteForm() {
           className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white
                      hover:bg-blue-700 disabled:opacity-50"
         >
-          {plan.isPending ? 'Planning…' : 'Show route'}
+          {plan.isPending ? 'Planning…' : 'Show routes'}
         </button>
       </form>
 
@@ -142,7 +143,12 @@ export default function RouteForm() {
       )}
 
       {plan.data && (
-        <RouteResultPanel result={plan.data} onPickCandidate={useCandidate} />
+        <RouteOptions
+          routes={plan.data.routes}
+          selected={route}
+          onSelect={setRoute}
+          onPickCandidate={pickCandidate}
+        />
       )}
     </section>
   )

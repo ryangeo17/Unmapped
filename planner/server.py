@@ -13,8 +13,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .plan import plan_route, places
-from .tools import TOOLS  # noqa: F401  (re-exported for callers that want it)
+from . import profiles
+from .plan import plan_all, plan_route, places
 
 app = FastAPI(title="Campus route planner")
 
@@ -27,10 +27,11 @@ app.add_middleware(
 )
 
 
-class RouteRequest(BaseModel):
+class RoutesRequest(BaseModel):
     origin: str
     destination: str
     smarter: bool = True
+    profile: str | None = None
 
 
 @app.on_event("startup")
@@ -43,6 +44,22 @@ def get_places():
     return {"places": places().index()}
 
 
-@app.post("/route")
-def post_route(req: RouteRequest):
-    return plan_route(req.origin, req.destination, req.smarter)
+@app.get("/profiles")
+def get_profiles():
+    return {"profiles": [
+        {"id": p,
+         "label": profiles.PROFILES[p]["label"],
+         "smartLabel": profiles.PROFILES[p].get("smartLabel"),
+         "description": profiles.PROFILES[p]["description"]}
+        for p in profiles.ORDER
+    ]}
+
+
+@app.post("/routes")
+def post_routes(req: RoutesRequest):
+    """All three answers in one call, so switching between them in the UI
+    costs nothing."""
+    if req.profile:
+        return {"routes": [plan_route(req.origin, req.destination,
+                                      req.profile, req.smarter)]}
+    return plan_all(req.origin, req.destination, req.smarter)

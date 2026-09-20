@@ -31,8 +31,12 @@ export type Saved = {
   plainArrival: string
 }
 
+export type Profile = 'walk' | 'step_free' | 'accessible'
+
 export type RouteOk = {
   status: 'ok'
+  profile: Profile
+  profileLabel: string
   smarter: boolean
   origin: { resolved: string; arrival: string; kind: string }
   destination: { resolved: string; arrival: string; kind: string }
@@ -101,6 +105,7 @@ export async function fetchPlaces(): Promise<Place[]> {
   return (await res.json()).places
 }
 
-export function planRoute(origin: string, destination: string, smarter: boolean) {
-  return post<RouteResult>('/route', { origin, destination, smarter })
+/** All three profiles in one call, so switching between them costs nothing. */
+export function planRoutes(origin: string, destination: string, smarter: boolean) {
+  return post<{ routes: RouteResult[] }>('/routes', { origin, destination, smarter })
 }

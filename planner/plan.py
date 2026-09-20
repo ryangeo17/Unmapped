@@ -11,7 +11,7 @@ A*; a model must never invent it.
 import collections
 import heapq
 
-from . import graph
+from . import graph, profiles
 from .geometry import metres
 from .places import Places
 
@@ -36,14 +36,27 @@ def places():
     return _load()["places"]
 
 
-def _graph(smarter):
+_graphs = {}
+
+
+def _graph(profile, shortcuts):
+    """Cached per (profile, shortcuts): the filter never changes, and rebuilding
+    the adjacency on every request was measurable."""
+    cfg = profiles.PROFILES[profile]
+    cache_key = (profile, shortcuts)
+    if cache_key in _graphs:
+        return _graphs[cache_key]
     adj = collections.defaultdict(list)
     for e in _load()["edges"]:
-        if e["p"].get("shortcut") and not smarter:
+        props = e["p"]
+        if props.get("shortcut") and not shortcuts:
             continue
-        edge = (e["min"], e["m"], e["p"])
+        if not profiles.allows(cfg, props):
+            continue
+        edge = (e["min"] * profiles.weight(cfg, props), e["m"], props, e["min"])
         adj[e["a"]].append((e["b"], edge))
         adj[e["b"]].append((e["a"], edge))
+    _graphs[cache_key] = adj
     return adj
 
 
@@ -104,7 +117,7 @@ def _steps(path, edges):
                     "from": list(path[i])}
             out.append(step)
         step["metres"] += edge[1]
-        step["minutes"] += edge[0]
+        step["minutes"] += edge[3]
         step["to"] = list(path[i + 1])
     for step in out:
         step["metres"] = round(step["metres"], 1)
@@ -112,19 +125,26 @@ def _steps(path, edges):
     return out
 
 
-def plan_route(origin, destination, smarter=True):
-    """Plan the walking route between two free-text place names.
+def plan_route(origin, destination, profile=profiles.DEFAULT, smarter=True):
+    """Plan one route between two free-text place names.
 
-    `smarter` is the product switch. On, the search may cut across open lawn
+    `profile` picks which of the three answers this is. `smarter` is the
+    product switch and only reaches walking: on, it may cut across open lawn
     and finish at any door including a car-park lift, and the result carries
-    what that saved against the plain route. Off, it stays on the official
-    paved network and uses signed entrances only — roughly what the campus
-    app itself would tell you.
+    what that saved against the plain paved line. The accessible profiles
+    ignore it — a shortcut inferred from geometry has no business in an
+    accessibility answer.
 
-    Both are priced, not forced: A* takes a shortcut or a side door only when
-    it is genuinely faster.
+    Nothing is forced: shortcuts and side doors are priced, so A* takes one
+    only when it is genuinely faster.
     """
     pl = places()
+    if profile not in profiles.PROFILES:
+        return {"status": "error",
+                "error": "unknown profile %r; use one of %s"
+                         % (profile, profiles.ORDER)}
+    cfg = profiles.PROFILES[profile]
+    shortcuts = smarter and profile in profiles.SHORTCUT_PROFILES
 
     a, a_alts = pl.resolve(origin)
     b, b_alts = pl.resolve(destination)
@@ -140,8 +160,12 @@ def plan_route(origin, destination, smarter=True):
         return {"status": "error", "field": field,
                 "error": "could not resolve %s %r" % (field, query)}
 
-    adj = _graph(smarter)
-    doors = lambda place: pl.entrances(place, lifts=smarter)
+    adj = _graph(profile, shortcuts)
+    # Lifts are a step-free way in, so the accessible profiles always see them;
+    # for walking they are part of what the switch buys.
+    doors = lambda place: pl.entrances(
+        place, lifts=shortcuts or cfg["stepFreeDoors"],
+        step_free=cfg["stepFreeDoors"])
     start_at = {_nearest(adj, d["point"]): d for d in doors(a)}
     end_at = {_nearest(adj, d["point"]): d for d in doors(b)}
 
@@ -154,7 +178,7 @@ def plan_route(origin, destination, smarter=True):
                 "error": "no walking route between these buildings"}
 
     total_m = sum(e[1] for e in edges)
-    minutes = sum(e[0] for e in edges)
+    minutes = sum(e[3] for e in edges)
     shortcut_m = sum(e[1] for e in edges if e[2].get("shortcut"))
     spaces = sorted({e[2].get("space") for e in edges if e[2].get("shortcut")})
     risers = sum(e[2].get("riser_count") or 0 for e in edges
@@ -190,8 +214,8 @@ def plan_route(origin, destination, smarter=True):
     # What the switch bought. Cheap — a second A* over the same cached graph —
     # and it is the only way the toggle means anything to the person using it.
     saved = None
-    if smarter:
-        plain = plan_route(origin, destination, smarter=False)
+    if shortcuts:
+        plain = plan_route(origin, destination, profile, smarter=False)
         if plain["status"] == "ok":
             saved = {
                 "plainMetres": plain["summary"]["metres"],
@@ -201,9 +225,17 @@ def plan_route(origin, destination, smarter=True):
                 "plainArrival": plain["destination"]["arrival"],
             }
 
+    if cfg["stepFreeDoors"]:
+        warnings.append(
+            "Step-free here means no steps in the routing network. 39% of the "
+            "basemap's stair footprints are not modelled as network segments, "
+            "so steps are still possible.")
+
     return {
         "status": "ok",
-        "smarter": smarter,
+        "profile": profile,
+        "profileLabel": (cfg.get("smartLabel") if shortcuts else cfg["label"]),
+        "smarter": shortcuts,
         "origin": {
             "query": origin, "resolved": a["properties"]["name"],
             "arrival": origin_door["label"], "kind": origin_door["kind"],
@@ -229,3 +261,10 @@ def plan_route(origin, destination, smarter=True):
         "savedBySmarter": saved,
         "warnings": warnings,
     }
+
+
+def plan_all(origin, destination, smarter=True):
+    """All three answers for one trip, so the UI can offer them without a
+    request per option."""
+    return {"routes": [plan_route(origin, destination, p, smarter)
+                       for p in profiles.ORDER]}

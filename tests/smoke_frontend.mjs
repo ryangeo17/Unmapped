@@ -107,20 +107,35 @@ try {
   await setField('From', 'Malone Hall')
   await setField('To', 'San Martin Garage')
   check('smarter defaults on', (await smarter.state()) === 'true')
-  await submit(); await settle(4000)
+  await submit(); await settle(4500)
   const on = await panel()
+  check('all three profiles offered',
+    on.includes('Walking') && on.includes('Partially accessible')
+      && on.includes('Fully accessible'))
+  check('walking is the smarter one by default', on.includes('Walking (smarter)'))
   check('smarter route arrives at the lift', on.includes('Elevator'), on.slice(-90))
   check('smarter route reports what it saved', /shorter than the paved route/.test(on))
   check('route is on the map', await routeDrawn())
 
-  // Smarter off: the same trip should get longer and end somewhere else.
-  await smarter.toggle(); await settle(400)
+  // Picking another profile must redraw without another request.
+  await ev(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('Fully accessible')).click()`)
+  await settle(2000)
+  check('selecting a profile marks it active',
+    (await ev(`[...document.querySelectorAll('button')].filter(b => b.className.includes('ring-1')).map(b => b.textContent.trim())[0] ?? ''`))
+      .includes('Fully accessible'))
+
+  // Smarter off: only walking should change. Select walking first — the panel
+  // keeps whichever profile was showing, so the accessible one would still be
+  // on screen and its details say nothing about the switch.
+  await ev(`[...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Walking')).click()`)
+  await settle(1500)
+  await smarter.toggle(); await settle(4500)
   check('toggle flips', (await smarter.state()) === 'false')
-  await submit(); await settle(4000)
   const off = await panel()
-  check('plain route ends at the building centre', off.includes('building centre'),
-    off.slice(-90))
-  check('plain route is different from the smarter one', off !== on)
+  check('walking loses the smarter label', !off.includes('Walking (smarter)'))
+  check('plain walking ends at the building centre', off.includes('building centre'),
+    off.slice(-120))
+  check('the panel changed', off !== on)
 
   // Ambiguity must be offered, not guessed.
   await smarter.toggle(); await settle(300)

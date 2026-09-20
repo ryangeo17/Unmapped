@@ -5,7 +5,7 @@ import { useLayerStore } from '../../store/useLayerStore'
 
 // Outside the green/amber/red the Pathways layer uses for accessibility
 // grading, so the route still reads as a route over the campus data.
-const COLOR = '#db2777'
+export const ROUTE_COLOR = '#db2777'
 const WIDTH = 5
 
 export default function RouteLayers() {
@@ -57,7 +57,7 @@ export default function RouteLayers() {
           id="route-line"
           type="line"
           layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-          paint={{ 'line-color': COLOR, 'line-width': WIDTH }}
+          paint={{ 'line-color': ROUTE_COLOR, 'line-width': WIDTH }}
         />
       </Source>
 

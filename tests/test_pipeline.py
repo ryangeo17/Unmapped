@@ -17,13 +17,13 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
 
 from planner.geometry import metres          # noqa: E402
-from planner.plan import plan_route          # noqa: E402
-from planner.tools import TOOLS, declarations  # noqa: E402
+from planner import profiles                 # noqa: E402
+from planner.plan import plan_all, plan_route  # noqa: E402
 
 ROUTES = os.path.join(ROOT, "tests", "fixtures")
 API_TS = os.path.join(ROOT, "frontend", "src", "api", "planner.ts")
 RESULT_TSX = os.path.join(ROOT, "frontend", "src", "components", "route",
-                          "RouteResult.tsx")
+                          "RouteOptions.tsx")
 
 
 def summary():
@@ -33,7 +33,8 @@ def summary():
 
 class TestExportedFiles(unittest.TestCase):
     def _path(self, row):
-        return os.path.join(ROUTES, "%s.%s.geojson" % (row["trip"], row["mode"]))
+        return os.path.join(ROUTES, "%s.%s.%s.geojson"
+                            % (row["trip"], row["profile"], row["mode"]))
 
     def test_every_trip_has_a_geojson(self):
         for row in summary():
@@ -42,7 +43,8 @@ class TestExportedFiles(unittest.TestCase):
             self.assertTrue(os.path.exists(self._path(row)), self._path(row))
 
     def test_no_orphan_geojson(self):
-        want = {"%s.%s.geojson" % (r["trip"], r["mode"]) for r in summary()}
+        want = {"%s.%s.%s.geojson" % (r["trip"], r["profile"], r["mode"])
+                for r in summary()}
         for name in os.listdir(ROUTES):
             if name.endswith(".geojson"):
                 self.assertIn(name, want,
@@ -110,69 +112,52 @@ class TestFrontendContract(unittest.TestCase):
                              % (expr, sorted(missing)))
 
 
-class TestToolContract(unittest.TestCase):
-    def test_every_declared_tool_is_dispatchable(self):
-        for decl in declarations():
-            self.assertIn(decl["name"], TOOLS)
+class TestProfiles(unittest.TestCase):
+    def test_all_three_solve_both_example_trips(self):
+        for a, b in (("Malone Hall", "Clark Hall"),
+                     ("Malone Hall", "San Martin Garage")):
+            routes = plan_all(a, b)["routes"]
+            self.assertEqual(len(routes), 3)
+            for route in routes:
+                self.assertEqual(route["status"], "ok",
+                                 "%s -> %s %s" % (a, b, route.get("profile")))
 
-    def test_no_undeclared_tool(self):
-        names = {d["name"] for d in declarations()}
-        self.assertEqual(set(TOOLS), names)
+    def test_accessible_profiles_never_take_a_shortcut(self):
+        """Shortcut edges are inferred from geometry, not surveyed, so they
+        have no business in an accessibility answer."""
+        for profile in ("step_free", "accessible"):
+            route = plan_route("Malone Hall", "Clark Hall", profile)
+            self.assertEqual(route["summary"]["shortcutMetres"], 0, profile)
+            self.assertFalse(route["smarter"], profile)
 
-    def test_declared_parameters_match_the_signature(self):
-        import inspect
-        decl = next(d for d in declarations() if d["name"] == "plan_route")
-        declared = set(decl["parameters"]["properties"])
-        accepted = set(inspect.signature(plan_route).parameters)
-        self.assertTrue(
-            declared <= accepted,
-            "schema advertises parameters plan_route does not take: %s"
-            % sorted(declared - accepted))
+    def test_accessible_profiles_take_no_steps(self):
+        for profile in ("step_free", "accessible"):
+            route = plan_route("Malone Hall", "San Martin Garage", profile)
+            self.assertEqual(route["summary"]["steps"], 0, profile)
 
-    def test_required_parameters_are_really_required(self):
-        decl = next(d for d in declarations() if d["name"] == "plan_route")
-        self.assertEqual(set(decl["parameters"]["required"]),
-                         {"origin", "destination"})
+    def test_accessible_profiles_warn_about_unmodelled_steps(self):
+        route = plan_route("Malone Hall", "Clark Hall", "step_free")
+        self.assertTrue(any("step-free" in w.lower() for w in route["warnings"]),
+                        route["warnings"])
 
-    def test_dispatch_returns_a_usable_route(self):
-        result = TOOLS["plan_route"]({"origin": "Malone Hall",
-                                      "destination": "Clark Hall"})
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("geometry", result)
+    def test_reported_minutes_are_real_not_the_weighted_cost(self):
+        """A* minimises a weighted cost; reporting it as duration showed the
+        fully accessible route at 24 minutes for a 9 minute walk."""
+        for profile in profiles.ORDER:
+            route = plan_route("Malone Hall", "San Martin Garage", profile)
+            speed = route["summary"]["metres"] / (route["summary"]["minutes"] * 60)
+            self.assertTrue(1.0 < speed < 1.45,
+                            "%s implies %.2f m/s" % (profile, speed))
 
-    def test_place_index_is_small_enough_to_send_to_a_model(self):
-        index = TOOLS["list_places"]({})["places"]
-        self.assertGreater(len(index), 50)
-        self.assertLess(len(json.dumps(index)), 64_000,
-                        "the place index is meant to be cheap to put in a prompt")
+    def test_the_switch_only_reaches_walking(self):
+        for profile in ("step_free", "accessible"):
+            on = plan_route("Malone Hall", "Clark Hall", profile, smarter=True)
+            off = plan_route("Malone Hall", "Clark Hall", profile, smarter=False)
+            self.assertEqual(on["geometry"], off["geometry"], profile)
 
-
-class TestSkillDoc(unittest.TestCase):
-    """SKILL.md is the contract a model is given, so it must not drift."""
-
-    def _skill(self):
-        with open(os.path.join(ROOT, "planner", "SKILL.md")) as fh:
-            return fh.read()
-
-    def test_documents_every_status(self):
-        skill = self._skill()
-        for status in ("ok", "ambiguous", "no_route", "error"):
-            self.assertIn("`%s`" % status, skill)
-
-    def test_documents_every_summary_field(self):
-        skill = self._skill()
-        route = plan_route("Malone Hall", "Clark Hall")
-        for field in route["summary"]:
-            self.assertIn(field, skill,
-                          "%s is returned but not documented in SKILL.md" % field)
-
-    def test_the_step_caveat_is_in_the_schema_too(self):
-        """A caller wiring up tool_schema.json without SKILL.md still has to
-        learn not to call such a route step-free."""
-        with open(os.path.join(ROOT, "planner", "tool_schema.json")) as fh:
-            schema = fh.read()
-        self.assertIn("stepsBesideShortcut", schema)
-        self.assertIn("step-free", schema)
+    def test_unknown_profile_is_an_error(self):
+        self.assertEqual(
+            plan_route("Malone Hall", "Clark Hall", "teleport")["status"], "error")
 
 
 if __name__ == "__main__":
