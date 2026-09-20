@@ -118,6 +118,11 @@ function Stat({ label, value, Icon }: { label: string; value: string; Icon: type
   return <div className="result-stat"><Icon size={18} /><span><strong>{value}</strong><small>{label}</small></span></div>
 }
 
+// Lawn shortcuts and any-door arrival, walking only. Always on: it is what
+// makes the route a good one rather than a setting worth asking about. The
+// backend still takes the flag, so re-exposing it is a toggle away.
+const SMARTER_PLANNER = true
+
 function MainMapPage() {
   const [startText, setStartText] = useState('')
   const [destinationText, setDestinationText] = useState('')
@@ -130,8 +135,6 @@ function MainMapPage() {
   const [error, setError] = useState('')
   const [showGraph, setShowGraph] = useState(false)
   const [showCampus, setShowCampus] = useState(false)
-  // The smarter planner: lawn shortcuts and any-door arrival. Walking only.
-  const [smarter, setSmarter] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [avoidedHazards, setAvoidedHazards] = useState<string[]>([])
   const [suggestionOpen, setSuggestionOpen] = useState(false)
@@ -243,7 +246,7 @@ function MainMapPage() {
         destination,
         mode,
         time,
-        smarter,
+        smarter: SMARTER_PLANNER,
         avoidEdgeIds: route?.hazards
           .filter((hazard) => avoidIds.includes(hazard.id) && hazard.edgeId)
           .map((hazard) => hazard.edgeId as string),
@@ -332,7 +335,6 @@ function MainMapPage() {
               <div>{MODE_OPTIONS.map(({ value, label, Icon }) => <button type="button" key={value} className={mode === value ? 'selected' : ''} aria-pressed={mode === value} onClick={() => setMode(value)}><Icon size={20} /><span>{label}</span></button>)}</div>
             </fieldset>
             <div className="preference-row"><span><strong>Route conditions</strong><small>Safety scoring adapts by time</small></span><div className="time-toggle"><button className={time === 'day' ? 'selected' : ''} onClick={() => setTime('day')} aria-label="Day route"><Sun size={17} /> Day</button><button className={time === 'night' ? 'selected' : ''} onClick={() => setTime('night')} aria-label="Night route"><Moon size={17} /> Night</button></div></div>
-            <div className="preference-row"><span><strong>Smarter planner</strong><small>{smarter ? 'Walking may cut across lawns and use any door or lift' : 'Walking stays on surveyed paths and signed entrances'}</small></span><div className="time-toggle"><button className={smarter ? 'selected' : ''} onClick={() => setSmarter(true)} aria-pressed={smarter} aria-label="Smarter planner on"><Sparkles size={17} /> On</button><button className={!smarter ? 'selected' : ''} onClick={() => setSmarter(false)} aria-pressed={!smarter} aria-label="Smarter planner off"><RouteIcon size={17} /> Off</button></div></div>
             {(error || geoError) && <div className="alert alert--error" role="alert"><CircleAlert size={18} /><span>{error || geoError}</span></div>}
             <button className="primary-button route-button" onClick={() => calculateRoute()} disabled={loading}>{loading ? <><span className="spinner" /> Finding your best route…</> : <><Navigation size={19} /> Find my route</>}</button>
 
