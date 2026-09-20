@@ -136,7 +136,7 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .map-pin { width: 34px; height: 34px; border-radius: 50%; color: white; background: var(--blue); border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,.3); display: grid; place-items: center; font: 700 12px 'DM Sans'; }
 .map-pin--start { background: #177047; }
 .map-pin--end { background: #0a376b; }
-.map-pin--person { background: #1476e6; border-radius: 50%; animation: pulse 2s infinite; }
+.map-pin--person { background: #1476e6; border-radius: 50%; font-size: 15px; line-height: 1; padding-left: 1px; animation: pulse 2s infinite; }
 .map-pin { text-indent: 0; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(20,118,230,.15); } }
 .mapbox-3d-toggle { position: absolute; z-index: 5; top: 14px; right: 14px; min-height: 38px; padding: 0 13px; border: 1px solid rgba(9,55,105,.22); border-radius: 9px; background: rgba(255,255,255,.94); color: var(--navy); box-shadow: var(--shadow); font-weight: 800; }
@@ -152,8 +152,14 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .legend-line--route { border-color: var(--blue); }
 .legend-line--alt { border-color: #8295aa; border-top-style: dashed; }
 .legend-line--verified { border-color: #197247; }
+/* These three match campusLayers.ts, which paints Pathways by JHU's own grade. */
+.legend-line--jhu-full { border-color: #16a34a; }
+.legend-line--jhu-partial { border-color: #eab308; }
+.legend-line--jhu-hazard { border-color: #dc2626; }
 .legend-line--unverified { border-color: #6b7280; border-top-style: dashed; }
 .legend-line--graph { border-color: #4b83c3; border-top-width: 2px; border-top-style: dotted; }
+.legend-dot--stepfree { background: #2563eb !important; border-color: #1e40af !important; }
+.legend-dot--entrance { background: #64748b !important; border-color: #475569 !important; }
 .legend-dot { width: 10px; height: 10px; background: #facc15; border: 2px solid #9a6b00; border-radius: 50%; }
 .legend-symbol { display: inline-grid; width: 17px; height: 17px; place-items: center; border-radius: 4px; background: #edf3f9; color: #35516f; font-style: normal; font-weight: 800; }
 .legend-symbol--closed { background: #fee2e2; color: #991b1b; }

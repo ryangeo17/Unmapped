@@ -105,6 +105,12 @@ export const api = {
     // picks whichever is actually nearest, which snapping a single coordinate
     // here cannot do — and it saves pulling the 2.2 MB graph overlay three
     // times per route just to find one node.
+    //
+    // A GPS fix is the exception: "Current location" is not a place the
+    // backend can look up, so it is snapped to a node first.
+    const resolve = async (place: Landmark) =>
+      place.id === 'current' ? await nearestNode(place.coordinates) : place.name
+    const [start, end] = await Promise.all([resolve(input.start), resolve(input.destination)])
     const avoidEdges = input.avoidEdgeIds ?? []
     const result = await request<{
       start_node: string
@@ -141,8 +147,8 @@ export const api = {
     }>('/routes/compute', {
       method: 'POST',
       body: JSON.stringify({
-        start: input.start.name,
-        end: input.destination.name,
+        start,
+        end,
         mode: input.mode,
         nighttime: input.time === 'night',
         smarter: input.smarter ?? true,

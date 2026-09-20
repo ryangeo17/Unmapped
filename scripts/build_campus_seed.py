@@ -201,7 +201,7 @@ def build_shortcuts(pathways, exterior, facilities, barriers, known_nodes):
     return out
 
 
-def build_places(places, nodes_by_key):
+def build_places(places, nodes_by_key, allowed=None):
     """Landmarks plus the doors you can actually arrive at.
 
     Their schema is one landmark to one node. A building has several doors, and
@@ -231,7 +231,7 @@ def build_places(places, nodes_by_key):
             "alias": props.get("name_alias") or (name if slug in LEGACY_NAMES else None),
         })
         for door in places.entrances(feature):
-            snapped, snap_m = nearest_key(nodes_by_key, door["point"])
+            snapped, snap_m = nearest_key(nodes_by_key, door["point"], allowed)
             if snapped is None:
                 continue
             doors.append({
@@ -248,10 +248,43 @@ def build_places(places, nodes_by_key):
     return landmarks, doors
 
 
-def nearest_key(nodes_by_key, point):
+def backbone(edges):
+    """Node keys in the largest connected component.
+
+    ArcGIS carries many short exterior fragments around individual buildings.
+    Snapping a door to one of those strands it: the route fails with no reason
+    a user can act on. Doors target the backbone instead, which is the idea
+    behind largest_pathway_component in the other import.
+    """
+    adjacency = {}
+    for e in edges:
+        if e["closed"]:
+            continue
+        adjacency.setdefault(e["from_node"], set()).add(e["to_node"])
+        adjacency.setdefault(e["to_node"], set()).add(e["from_node"])
+    seen, best = set(), set()
+    for start in adjacency:
+        if start in seen:
+            continue
+        stack, group = [start], set()
+        while stack:
+            node = stack.pop()
+            if node in group:
+                continue
+            group.add(node)
+            stack.extend(adjacency[node] - group)
+        seen |= group
+        if len(group) > len(best):
+            best = group
+    return best
+
+
+def nearest_key(nodes_by_key, point, allowed=None):
     """Snap a door onto the pavement network. Linear, but this runs once."""
     best, best_d = None, float("inf")
     for k in nodes_by_key:
+        if allowed is not None and node_id(k) not in allowed:
+            continue
         d = metres(k, point)
         if d < best_d:
             best, best_d = k, d
@@ -259,6 +292,57 @@ def nearest_key(nodes_by_key, point):
     # buildings. The distance is recorded and disclosed rather than used to
     # drop the place from search, which would make it unfindable.
     return (best, best_d) if best_d <= 400 else (None, best_d)
+
+
+def apply_robot_observations(edges, nodes_by_key):
+    """Anchor the hand-authored demo observations onto real segments.
+
+    Returns the hazard records with a real `edge_id`. The measurements are
+    stamped onto those segments and marked verified, so they are the only
+    place in the graph where slope, surface, roughness and lighting are not
+    null — which is exactly the contrast the robot pipeline exists to create.
+    """
+    path = os.path.join(OUT, "robot_demo_observations.json")
+    if not os.path.exists(path):
+        return []
+    with open(path) as fh:
+        observations = json.load(fh)["observations"]
+
+    by_id = {e["id"]: e for e in edges}
+    midpoints = []
+    for e in edges:
+        if e["kind"] == "shortcut":
+            continue
+        a, b = key_of(e["from_node"]), key_of(e["to_node"])
+        midpoints.append((e["id"], ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)))
+
+    hazards = []
+    for obs in observations:
+        point = (obs["longitude"], obs["latitude"])
+        edge_id, distance = min(
+            ((eid, metres(mid, point)) for eid, mid in midpoints),
+            key=lambda pair: pair[1],
+        )
+        edge = by_id[edge_id]
+        edge.update(obs["measured"])
+        edge["verified"] = True
+        edge["confidence"] = 0.96
+        hazards.append({
+            "id": obs["id"], "title": obs["title"],
+            "description": obs["description"], "severity": obs["severity"],
+            "kind": obs["kind"], "edge_id": edge_id,
+            "latitude": obs["latitude"], "longitude": obs["longitude"],
+            "active": True, "verified": True,
+            "evidence": json.dumps(obs["evidence"]),
+        })
+        print("  %-26s -> %s (%.0fm away)" % (obs["id"], edge_id, distance))
+    return hazards
+
+
+def key_of(node):
+    """Recover the coordinate a node id was derived from."""
+    lng, lat = node[1:].split("_")
+    return (int(lng) / 1e5, int(lat) / 1e5)
 
 
 def main():
@@ -294,9 +378,14 @@ def main():
         print("  %d shortcut edges" % len(cuts))
         edges.extend(cuts)
 
+    print("applying robot demo observations...")
+    hazards = apply_robot_observations(edges, node_keys)
+
     print("assigning doors...")
+    main_component = backbone(edges)
+    print("  backbone: %d of %d nodes" % (len(main_component), len(node_keys)))
     places = Places(facilities, exterior, entryways, elevators)
-    landmarks, doors = build_places(places, node_keys)
+    landmarks, doors = build_places(places, node_keys, main_component)
     print("  %d landmarks, %d doors" % (len(landmarks), len(doors)))
 
     nodes = [{"id": node_id(k), "name": node_id(k),
@@ -307,15 +396,13 @@ def main():
     write(args.out, "homewood_graph.json", {"nodes": nodes, "edges": edges})
     write(args.out, "homewood_landmarks.json", landmarks)
     write(args.out, "homewood_doors.json", doors)
-    # Hazards are observations and there are none yet; the submission and
-    # robot-verification pipeline is what creates them.
-    write(args.out, "homewood_hazards.json", [])
+    write(args.out, "homewood_hazards.json", hazards)
 
     kinds = {}
     for e in edges:
         kinds[e["kind"]] = kinds.get(e["kind"], 0) + 1
     print("\n%d nodes, %d edges %s" % (len(nodes), len(edges), kinds))
-    print("%d landmarks, %d doors, 0 hazards" % (len(landmarks), len(doors)))
+    print("%d landmarks, %d doors, %d hazards" % (len(landmarks), len(doors), len(hazards)))
     print("%.0fs" % (time.time() - start))
 
 

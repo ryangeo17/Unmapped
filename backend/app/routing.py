@@ -109,8 +109,10 @@ def resolve_doors(db: Session, value: str, step_free: bool = False) -> list[Land
     that forces it: the survey records no entrance for it, only a lift.
     """
     if db.get(GraphNode, value):
+        # A bare node id — a GPS fix that the client already snapped. It is by
+        # definition on the network, so there is no shortfall to report.
         return [LandmarkDoor(landmark_id="", node_id=value, label=value, kind="node",
-                             step_free=True)]
+                             step_free=True, snap_m=0.0)]
 
     landmark = find_landmark(db, value)
     if landmark is None:

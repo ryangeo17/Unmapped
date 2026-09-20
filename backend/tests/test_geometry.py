@@ -111,8 +111,9 @@ def test_every_place_is_routable_or_says_why_not(client):
     """116 places. A name in the search box that fails with a shrug is worse
     than one that is not listed; a name that fails with a reason is fine.
 
-    Four places are inside the AMR 1 Replacement construction zone and are
-    genuinely unreachable on foot right now. That is the correct answer.
+    Doors snap to the largest connected component, so nothing is stranded on
+    an orphan fragment. A place may still be unreachable if a construction
+    closure seals it off — that is the correct answer, and it says so.
     """
     landmarks = client.get("/api/landmarks").json()
     blocked, broken = [], []
@@ -129,5 +130,5 @@ def test_every_place_is_routable_or_says_why_not(client):
         else:
             broken.append((item["name"], response.status_code, detail))
     assert not broken, broken
+    # Whatever is blocked must be blocked by a named closure, not by a gap.
     assert len(blocked) <= 6, blocked
-    assert "Alumni Memorial Residence 1" in blocked

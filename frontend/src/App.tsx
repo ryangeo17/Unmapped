@@ -403,7 +403,7 @@ function MainMapPage() {
         </aside>
 
         <div className="map-wrap">
-          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} showCampus={showCampus} nighttime={time === 'night'} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
+          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} showCampus={showCampus} nighttime={time === 'night'} navigationActive={navigating || demoRunning || demoProgress > 0} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
           <div className="legend" aria-label="Map legend">
             <strong>Map key</strong>
             <span><i className="legend-line legend-line--route" /> Selected route</span>
@@ -413,7 +413,15 @@ function MainMapPage() {
             <span><i className="legend-dot" /> Caution</span>
             <span><i className="legend-symbol legend-symbol--closed">×</i> Closure</span>
             <span><i className="legend-symbol legend-symbol--submission">+</i> User submission</span>
-            {showGraph && <span><i className="legend-line legend-line--graph" /> Routing graph</span>}
+            {(showCampus || showGraph) && <>
+              <span><i className="legend-line legend-line--jhu-full" /> JHU fully accessible</span>
+              <span><i className="legend-line legend-line--jhu-partial" /> JHU partially accessible</span>
+              <span><i className="legend-line legend-line--jhu-hazard" /> JHU may have hazards</span>
+            </>}
+            {showCampus && <>
+              <span><i className="legend-dot legend-dot--stepfree" /> Step-free entrance</span>
+              <span><i className="legend-dot legend-dot--entrance" /> Entrance, not step-free</span>
+            </>}
           </div>
           {suggestionDrawing && !suggestionReference && <div className="map-instruction"><MapPin size={18} /><span><strong>Draw your better route</strong>Click 2+ points on the map · {suggestionPoints.length} added</span><button className="text-button" onClick={() => setSuggestionPoints((points) => points.slice(0, -1))} disabled={!suggestionPoints.length}>Undo</button><button className="text-button" onClick={() => setSuggestionOpen(true)}>Finish</button></div>}
         </div>

@@ -71,14 +71,25 @@ def test_health_landmarks_and_graph(client):
 
 def test_unmeasured_attributes_are_null_not_optimistic(client):
     """The point of the whole import: nobody has surveyed slope, surface,
-    roughness, lighting or security here, and a default would read as good."""
+    roughness, lighting or security here, and a default would read as good.
+
+    The exceptions are the handful of segments a demo robot observation has
+    been placed on — those carry real-shaped measurements precisely so the
+    contrast with the rest is visible.
+    """
     overlay = client.get("/api/graph/overlay").json()
-    surveyed = [e for e in overlay["edges"] if e["kind"] != "shortcut"]
-    assert surveyed
-    assert all(e["slope"] is None for e in surveyed)
-    assert all(e["safety"] is None for e in surveyed)
-    assert all(e["lit"] is None for e in surveyed)
-    assert all(e["surface"] is None for e in surveyed)
+    unmeasured = [e for e in overlay["edges"]
+                  if e["kind"] != "shortcut" and not e["verified"]]
+    measured = [e for e in overlay["edges"] if e["verified"]]
+    assert unmeasured
+    assert all(e["slope"] is None for e in unmeasured)
+    assert all(e["safety"] is None for e in unmeasured)
+    assert all(e["lit"] is None for e in unmeasured)
+    assert all(e["surface"] is None for e in unmeasured)
+    # Verified means a robot measured it, and a measurement is a number.
+    assert measured
+    assert all(e["slope"] is not None and e["safety"] is not None
+               for e in measured), "a verified edge with no reading is a lie"
     # And it is disclosed rather than buried.
     walk = route(client, "Malone Hall", "Clark Hall")
     assert walk["verified_stats"]["unknown_attribute_m"] > 0
