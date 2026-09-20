@@ -255,6 +255,8 @@ def graph_overlay(db: Annotated[Session, Depends(get_db)]) -> dict:
                 "lit": e.lit, "closed": e.closed, "bidirectional": e.bidirectional, "source": e.source,
                 "verified": e.verified, "verified_at": e.verified_at,
                 "confidence": e.confidence, "construction": e.construction,
+                "accessibility": e.accessibility,
+                "geometry": json.loads(e.geometry or "[]"),
             }
             for e in edges
         ],

@@ -24,7 +24,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 interface Overlay {
   nodes: { id: string; name: string; latitude: number; longitude: number }[]
-  edges: { id: string; from_node: string; to_node: string; closed: boolean; verified?: boolean }[]
+  edges: { id: string; from_node: string; to_node: string; closed: boolean; verified?: boolean; geometry?: [number, number][]; accessibility?: string }[]
   hazards: { id: string; edge_id?: string; latitude: number; longitude: number }[]
 }
 
@@ -104,15 +104,16 @@ export const api = {
       }))
   },
 
-  async calculateRoute(input: {
-    start: LatLng
-    destination: LatLng
+  async   calculateRoute(input: {
+    start: LatLng | string
+    destination: LatLng | string
     mode: TravelMode
     time: 'day' | 'night'
     avoidHazardIds?: string[]
   }): Promise<RouteResult> {
     const overlay = await getOverlay()
-    const [start, end] = await Promise.all([nearestNode(input.start), nearestNode(input.destination)])
+    const start = typeof input.start === 'string' ? input.start : await nearestNode(input.start)
+    const end = typeof input.destination === 'string' ? input.destination : await nearestNode(input.destination)
     const avoidEdges = overlay.hazards
       .filter((hazard) => input.avoidHazardIds?.includes(hazard.id) && hazard.edge_id)
       .map((hazard) => hazard.edge_id as string)
@@ -168,6 +169,9 @@ export const api = {
     })
     const nodeMap = new Map(overlay.nodes.map((node) => [node.id, node]))
     const graphEdges = overlay.edges.map((edge) => {
+      if (Array.isArray(edge.geometry) && edge.geometry.length > 1) {
+        return edge.geometry.map(([longitude, latitude]) => [latitude, longitude] as LatLng)
+      }
       const from = nodeMap.get(edge.from_node)
       const to = nodeMap.get(edge.to_node)
       return from && to ? [[from.latitude, from.longitude], [to.latitude, to.longitude]] as LatLng[] : []

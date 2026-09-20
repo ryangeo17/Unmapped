@@ -31,7 +31,9 @@ robot surveys can replace records without code changes.
 - Validate that line endpoints match their graph nodes and that coordinates are
   inside the Homewood campus bounds before importing.
 
-The editable files are `data/homewood_landmarks.json`,
-`data/homewood_graph.json`, and `data/homewood_hazards.json`; evidence assets
-live in `backend/static/evidence/`. The public graph endpoint is the quickest
-way to inspect the normalized result.
+The campus-wide fallback graph comes from JHU's public Indoors Pathways and
+Facilities layers. Robot-verified demo edges live in
+`data/robot_verified_overlay.json` and are merged into `data/homewood_graph.json`.
+Evidence assets live in `backend/static/evidence/`. Refresh the JHU layer with
+`backend/scripts/import_jhu_indoors.py`. The public graph endpoint is the
+quickest way to inspect the normalized result.

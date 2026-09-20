@@ -31,21 +31,40 @@ class Arc:
 def resolve_location(db: Session, value: str) -> str:
     if db.get(GraphNode, value):
         return value
-    landmark = db.scalar(select(Landmark).where(or_(Landmark.id == value, Landmark.name.ilike(value))))
-    if landmark:
-        return landmark.node_id
+    exact = db.scalar(select(Landmark).where(or_(Landmark.id == value, Landmark.name.ilike(value))))
+    if exact:
+        return exact.node_id
+    matches = db.scalars(select(Landmark).where(Landmark.name.ilike(f"%{value}%"))).all()
+    if len(matches) == 1:
+        return matches[0].node_id
     raise HTTPException(404, f"Unknown node or landmark: {value}")
 
 
-def edge_cost(edge: GraphEdge, mode: str, nighttime: bool, hazard_severity: int = 0) -> float:
+def edge_cost(
+    edge: GraphEdge,
+    mode: str,
+    nighttime: bool,
+    hazard_severity: int = 0,
+    allow_unverified_fallback: bool = False,
+) -> float:
     """Single source of truth for travel-mode and day/night edge weighting."""
     if edge.closed or not edge.published:
         return math.inf
-    if mode == "wheelchair" and (edge.stairs or edge.curb or abs(edge.slope) > 0.10):
-        return math.inf
-    if mode in {"scooter", "bicycle"} and edge.stairs:
-        return math.inf
-    if mode == "scooter" and edge.surface in {"dirt", "gravel"}:
+    access = getattr(edge, "accessibility", "unknown") or "unknown"
+    restricted = (
+        mode == "wheelchair" and (edge.stairs or edge.curb or abs(edge.slope) > 0.10 or access == "hazard")
+        or mode in {"scooter", "bicycle"} and edge.stairs
+        or mode == "scooter" and (edge.surface in {"dirt", "gravel"} or access == "hazard")
+        or mode == "bicycle" and access == "hazard"
+    )
+    # If JHU's fragmented accessibility layer has no strict route, retain a
+    # heavily penalized unverified path and clearly disclose its limitations.
+    # Verified restrictions and closures remain hard barriers.
+    if restricted and not (
+        allow_unverified_fallback
+        and not edge.verified
+        and getattr(edge, "source", "") == "jhu_indoors"
+    ):
         return math.inf
 
     cost = edge.distance_m / SPEED_MPS[mode]
@@ -57,9 +76,39 @@ def edge_cost(edge: GraphEdge, mode: str, nighttime: bool, hazard_severity: int 
     if nighttime and not edge.lit:
         cost *= 1.7
     cost *= 1 + hazard_severity * 0.15
+    if mode in {"wheelchair", "scooter"} and access == "partial":
+        cost *= 1.35
+    if mode == "wheelchair" and access == "full":
+        cost *= 0.94
+    if restricted:
+        cost *= 25
     # Verification is a confidence preference, never a safety gate.
     cost *= 0.96 if edge.verified else 1 + max(0.0, 0.7 - edge.confidence) * 0.08
     return cost
+
+
+def _edge_coords(edge: GraphEdge, reversed_arc: bool) -> list[list[float]]:
+    try:
+        coords = json.loads(edge.geometry or "[]")
+    except json.JSONDecodeError:
+        coords = []
+    if len(coords) < 2:
+        return []
+    return list(reversed(coords)) if reversed_arc else coords
+
+
+def _route_geometry(arcs: list[tuple[str, Arc]], nodes: dict[str, GraphNode]) -> list[list[float]]:
+    geometry: list[list[float]] = []
+    for origin, arc in arcs:
+        coords = _edge_coords(arc.edge, arc.reversed)
+        if not coords:
+            start, end = nodes[origin], nodes[arc.target]
+            coords = [[start.longitude, start.latitude], [end.longitude, end.latitude]]
+        if geometry and geometry[-1] == coords[0]:
+            geometry.extend(coords[1:])
+        else:
+            geometry.extend(coords)
+    return geometry
 
 
 def _direction(start: GraphNode, end: GraphNode) -> str:
@@ -94,23 +143,30 @@ def compute_route(
         if edge.bidirectional:
             graph.setdefault(edge.to_node, []).append(Arc(edge, edge.from_node, True))
 
-    distances = {start: 0.0}
-    previous: dict[str, tuple[str, Arc]] = {}
-    queue: list[tuple[float, str]] = [(0.0, start)]
-    while queue:
-        current_cost, current = heapq.heappop(queue)
-        if current == end:
-            break
-        if current_cost != distances.get(current):
-            continue
-        for arc in graph.get(current, []):
-            severity = max((h.severity for h in hazards_by_edge.get(arc.edge.id, [])), default=0)
-            cost = edge_cost(arc.edge, mode, nighttime, severity)
-            candidate = current_cost + cost
-            if candidate < distances.get(arc.target, math.inf):
-                distances[arc.target] = candidate
-                previous[arc.target] = (current, arc)
-                heapq.heappush(queue, (candidate, arc.target))
+    def shortest_path(allow_unverified_fallback: bool) -> tuple[dict[str, float], dict[str, tuple[str, Arc]]]:
+        distances = {start: 0.0}
+        previous: dict[str, tuple[str, Arc]] = {}
+        queue: list[tuple[float, str]] = [(0.0, start)]
+        while queue:
+            current_cost, current = heapq.heappop(queue)
+            if current == end:
+                break
+            if current_cost != distances.get(current):
+                continue
+            for arc in graph.get(current, []):
+                severity = max((h.severity for h in hazards_by_edge.get(arc.edge.id, [])), default=0)
+                cost = edge_cost(arc.edge, mode, nighttime, severity, allow_unverified_fallback)
+                candidate = current_cost + cost
+                if candidate < distances.get(arc.target, math.inf):
+                    distances[arc.target] = candidate
+                    previous[arc.target] = (current, arc)
+                    heapq.heappush(queue, (candidate, arc.target))
+        return distances, previous
+
+    distances, previous = shortest_path(False)
+    used_unverified_fallback = end not in distances
+    if used_unverified_fallback:
+        distances, previous = shortest_path(True)
 
     if end not in distances:
         raise HTTPException(422, f"No {mode} route is available with the current restrictions")
@@ -139,7 +195,12 @@ def compute_route(
         round(sum(edge.safety * edge.distance_m for edge in route_edges) / distance_m * 100, 1)
         if distance_m else 100.0
     )
-    accessibility_score = max(0.0, round(100 - stairs * 35 - rough_m / max(distance_m, 1) * 30, 1))
+    hazard_m = sum(edge.distance_m for edge in route_edges if getattr(edge, "accessibility", "") == "hazard")
+    partial_m = sum(edge.distance_m for edge in route_edges if getattr(edge, "accessibility", "") == "partial")
+    accessibility_score = max(
+        0.0,
+        round(100 - stairs * 35 - rough_m / max(distance_m, 1) * 20 - hazard_m / max(distance_m, 1) * 25 - partial_m / max(distance_m, 1) * 10, 1),
+    )
 
     steps = []
     for index, (origin, arc) in enumerate(arcs, 1):
@@ -153,6 +214,11 @@ def compute_route(
             cautions.append("rough surface")
         if nighttime and not arc.edge.lit:
             cautions.append("unlit at night")
+        access = getattr(arc.edge, "accessibility", "unknown")
+        if access == "partial":
+            cautions.append("JHU partially accessible")
+        elif access == "hazard":
+            cautions.append("JHU travel hazard")
         steps.append(
             {
                 "index": index,
@@ -166,13 +232,22 @@ def compute_route(
 
     explanations = [f"Optimized centralized {mode} costs for {'night' if nighttime else 'day'} travel."]
     if mode == "wheelchair":
-        explanations.append("Excluded stairs, unlowered curbs, and steep slopes.")
+        explanations.append("Excluded stairs, unlowered curbs, steep slopes, and JHU non-compliant paths.")
+    if mode == "scooter":
+        explanations.append("Excluded stairs, gravel, and JHU hazardous paths.")
+    if any(getattr(edge, "source", "") == "jhu_indoors" for edge in route_edges):
+        explanations.append("Used the JHU Indoors accessibility map as the unverified fallback layer.")
     if avoid_edges:
         explanations.append(f"Avoided {len(avoid_edges)} user-selected edge(s).")
     if route_hazards:
         explanations.append("Applied active hazard penalties.")
     if verified_m < distance_m:
         explanations.append("Unverified segments remain usable and are disclosed rather than treated as unsafe.")
+    if used_unverified_fallback:
+        explanations.append(
+            "No fully compatible path exists in the current data; this route includes heavily penalized "
+            "unverified JHU segments that may not meet the selected transport requirements."
+        )
     if nighttime:
         explanations.append("Night routing gives substantially more weight to lighting and security coverage.")
 
@@ -181,7 +256,7 @@ def compute_route(
         "end_node": end,
         "mode": mode,
         "nighttime": nighttime,
-        "geometry": [[nodes[node].longitude, nodes[node].latitude] for node in path_nodes],
+        "geometry": _route_geometry(arcs, nodes),
         "node_ids": path_nodes,
         "edge_ids": [edge.id for edge in route_edges],
         "steps": steps,

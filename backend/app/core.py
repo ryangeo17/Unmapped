@@ -64,6 +64,8 @@ class GraphEdge(Base):
     bidirectional: Mapped[bool] = mapped_column(Boolean, default=True)
     source: Mapped[str] = mapped_column(String(30), default="seed")
     published: Mapped[bool] = mapped_column(Boolean, default=True)
+    accessibility: Mapped[str] = mapped_column(String(20), default="unknown")
+    geometry: Mapped[str] = mapped_column(Text, default="[]")
     submission_id: Mapped[int | None] = mapped_column(ForeignKey("submissions.id"), nullable=True)
 
 
@@ -140,13 +142,40 @@ def _load_json(name: str) -> list[dict]:
         return json.load(file)
 
 
+def _edge_record(item: dict) -> GraphEdge:
+    geometry = item.get("geometry")
+    return GraphEdge(
+        id=item["id"],
+        from_node=item["from_node"],
+        to_node=item["to_node"],
+        distance_m=item["distance_m"],
+        surface=item.get("surface", "paved"),
+        roughness=item.get("roughness", 0),
+        slope=item.get("slope", 0),
+        safety=item.get("safety", 1),
+        stairs=item.get("stairs", False),
+        curb=item.get("curb", False),
+        lit=item.get("lit", True),
+        verified=item.get("verified", False),
+        confidence=item.get("confidence", 0.55),
+        construction=item.get("construction", False),
+        closed=item.get("closed", False),
+        bidirectional=item.get("bidirectional", True),
+        source=item.get("source", "seed"),
+        published=True,
+        accessibility=item.get("accessibility", "unknown"),
+        geometry=geometry if isinstance(geometry, str) else json.dumps(geometry or []),
+    )
+
+
 def seed_database(db: Session) -> None:
     """Idempotently import the editable checked-in Homewood graph."""
+    graph = _load_json("homewood_graph.json")
     if not db.scalar(select(GraphNode.id).limit(1)):
-        db.add_all(GraphNode(**item) for item in _load_json("homewood_graph.json")["nodes"])
+        db.add_all(GraphNode(**item) for item in graph["nodes"])
         db.commit()
-    if not db.scalar(select(GraphEdge.id).where(GraphEdge.source == "seed").limit(1)):
-        db.add_all(GraphEdge(**item, source="seed", published=True) for item in _load_json("homewood_graph.json")["edges"])
+    if not db.scalar(select(GraphEdge.id).limit(1)):
+        db.add_all(_edge_record(item) for item in graph["edges"])
         db.commit()
     if not db.scalar(select(Landmark.id).limit(1)):
         db.add_all(Landmark(**item) for item in _load_json("homewood_landmarks.json"))

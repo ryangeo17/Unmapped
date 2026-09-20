@@ -235,8 +235,8 @@ function MainMapPage() {
     setError('')
     try {
       const result = await api.calculateRoute({
-        start: start.coordinates,
-        destination: destination.coordinates,
+        start: start.id === 'current' ? start.coordinates : start.id,
+        destination: destination.id === 'current' ? destination.coordinates : destination.id,
         mode,
         time,
         avoidHazardIds: avoidIds,
@@ -367,12 +367,14 @@ function MainMapPage() {
         </aside>
 
         <div className="map-wrap">
-          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} nighttime={time === 'night'} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
+          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} nighttime={time === 'night'} navigationActive={navigating || demoRunning || demoProgress > 0} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
           <div className="legend" aria-label="Map legend">
             <strong>Map key</strong>
             <span><i className="legend-line legend-line--route" /> Selected route</span>
             <span><i className="legend-line legend-line--verified" /> ✓ Robot verified</span>
-            <span><i className="legend-line legend-line--unverified" /> ? Unverified</span>
+            <span><i className="legend-line legend-line--jhu-full" /> JHU fully accessible</span>
+            <span><i className="legend-line legend-line--jhu-partial" /> JHU partial</span>
+            <span><i className="legend-line legend-line--unverified" /> Unverified fallback</span>
             <span><i className="legend-symbol">⇅</i> Stairs</span>
             <span><i className="legend-dot" /> Caution</span>
             <span><i className="legend-symbol legend-symbol--closed">×</i> Closure</span>

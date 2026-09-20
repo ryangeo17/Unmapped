@@ -64,7 +64,7 @@ npm run dev
 ```
 
 Open <http://localhost:5173>. On first startup the API idempotently loads the
-checked-in demo graph into a fresh database.
+checked-in JHU Indoors fallback graph plus the robot-verified demo overlay.
 
 ## Configuration
 
