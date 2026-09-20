@@ -46,7 +46,6 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .eyebrow { color: var(--blue); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .13em; margin-bottom: 7px; }
 
 .route-inputs { position: relative; display: grid; gap: 14px; margin: 25px 0 22px; }
-.connector { position: absolute; top: 59px; left: 17px; height: 52px; border-left: 2px dotted #9fb2c8; z-index: 1; }
 .search-field { position: relative; }
 .search-field > label, .mode-picker legend, .suggestion-modal label, .login-card label { display: block; color: #455870; font-weight: 700; font-size: 12px; margin: 0 0 7px; }
 .input-shell { position: relative; display: flex; align-items: center; min-height: 49px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 2px 7px rgba(8, 29, 55, .03); }
@@ -158,8 +157,6 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .legend-line--jhu-hazard { border-color: #dc2626; }
 .legend-line--unverified { border-color: #6b7280; border-top-style: dashed; }
 .legend-line--graph { border-color: #4b83c3; border-top-width: 2px; border-top-style: dotted; }
-.legend-dot--stepfree { background: #2563eb !important; border-color: #1e40af !important; }
-.legend-dot--entrance { background: #64748b !important; border-color: #475569 !important; }
 .legend-dot { width: 10px; height: 10px; background: #facc15; border: 2px solid #9a6b00; border-radius: 50%; }
 .legend-symbol { display: inline-grid; width: 17px; height: 17px; place-items: center; border-radius: 4px; background: #edf3f9; color: #35516f; font-style: normal; font-weight: 800; }
 .legend-symbol--closed { background: #fee2e2; color: #991b1b; }

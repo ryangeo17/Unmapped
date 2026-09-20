@@ -134,7 +134,9 @@ function MainMapPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showGraph, setShowGraph] = useState(false)
-  const [showCampus, setShowCampus] = useState(false)
+  // Campus 不再是覆盖层开关，而是一次“回到校园”的动作。令牌每次点击自增，
+  // 这样连续点击也会重新居中，而不是第二次变成空操作。
+  const [recenterToken, setRecenterToken] = useState(0)
   const [panelOpen, setPanelOpen] = useState(true)
   const [avoidedHazards, setAvoidedHazards] = useState<string[]>([])
   const [suggestionOpen, setSuggestionOpen] = useState(false)
@@ -301,7 +303,7 @@ function MainMapPage() {
         <div className="brand"><span className="brand-logo"><RouteIcon size={22} /></span><span><strong>UnMapped</strong><small>Routes for every body</small></span></div>
         <div className="top-actions">
           <button className={`secondary-button overlay-button ${showGraph ? 'active' : ''}`} onClick={() => setShowGraph((show) => !show)} aria-pressed={showGraph}><Layers3 size={17} /> Graph</button>
-            <button className={`secondary-button overlay-button ${showCampus ? 'active' : ''}`} onClick={() => setShowCampus((show) => !show)} aria-pressed={showCampus} title="JHU survey: buildings, entrances, paving and stairs"><Map size={17} /> Campus</button>
+            <button className="secondary-button overlay-button" onClick={() => setRecenterToken((token) => token + 1)} title="Recentre the map on Homewood campus"><Map size={17} /> Campus</button>
           <button className="secondary-button" onClick={() => { setSuggestionOpen(true); setSuggestionDrawing(true); setSuggestionReference('') }}><Plus size={17} /> Suggest a route</button>
           <Link className="admin-link" to="/admin">Admin</Link>
         </div>
@@ -313,7 +315,6 @@ function MainMapPage() {
           <div className="panel-scroll">
             <div className="panel-intro"><p className="eyebrow">Homewood campus</p><h1>Find the route that fits.</h1><p>Navigate with accessibility, safety, and community knowledge built in.</p></div>
             <div className="route-inputs">
-              <span className="connector" aria-hidden="true" />
               <SearchField
                 label="Starting point"
                 value={startText}
@@ -405,7 +406,7 @@ function MainMapPage() {
         </aside>
 
         <div className="map-wrap">
-          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} showCampus={showCampus} nighttime={time === 'night'} navigationActive={navigating || demoRunning || demoProgress > 0} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
+          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} recenterToken={recenterToken} nighttime={time === 'night'} navigationActive={navigating || demoRunning || demoProgress > 0} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
           <div className="legend" aria-label="Map legend">
             <strong>Map key</strong>
             <span><i className="legend-line legend-line--route" /> Selected route</span>
@@ -419,10 +420,6 @@ function MainMapPage() {
               <span><i className="legend-line legend-line--jhu-full" /> JHU fully accessible</span>
               <span><i className="legend-line legend-line--jhu-partial" /> JHU partially accessible</span>
               <span><i className="legend-line legend-line--jhu-hazard" /> JHU may have hazards</span>
-            </>}
-            {showCampus && <>
-              <span><i className="legend-dot legend-dot--stepfree" /> Step-free entrance</span>
-              <span><i className="legend-dot legend-dot--entrance" /> Entrance, not step-free</span>
             </>}
           </div>
           {suggestionDrawing && !suggestionReference && <div className="map-instruction"><MapPin size={18} /><span><strong>Draw your better route</strong>Click 2+ points on the map · {suggestionPoints.length} added</span><button className="text-button" onClick={() => setSuggestionPoints((points) => points.slice(0, -1))} disabled={!suggestionPoints.length}>Undo</button><button className="text-button" onClick={() => setSuggestionOpen(true)}>Finish</button></div>}

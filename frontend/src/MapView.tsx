@@ -113,6 +113,7 @@ interface MapViewProps {
   suggestionMode?: boolean
   showGraph?: boolean
   showCampus?: boolean
+  recenterToken?: number
   nighttime?: boolean
   navigationActive?: boolean
   avoidedHazards?: string[]
@@ -132,6 +133,7 @@ export default function MapView({
   suggestionMode = false,
   showGraph = false,
   showCampus = false,
+  recenterToken = 0,
   nighttime = false,
   navigationActive = false,
   avoidedHazards = [],
@@ -319,16 +321,6 @@ export default function MapView({
     map.on('style.load', update)
     map.once('idle', update)
     retry = window.setTimeout(update, 0)
-    if (showCampus) {
-      try {
-        const center = map.getCenter()
-        if (Math.hypot(center.lng - HOMEWOOD[0], center.lat - HOMEWOOD[1]) > 0.012) {
-          map.easeTo({ center: HOMEWOOD, zoom: Math.max(map.getZoom(), 16), duration: 700 })
-        }
-      } catch {
-        // Map is still starting; Campus can stay at the current camera.
-      }
-    }
     return () => {
       cancelled = true
       if (retry !== undefined) window.clearTimeout(retry)
@@ -336,6 +328,19 @@ export default function MapView({
       map.off('idle', update)
     }
   }, [showGraph, showCampus])
+
+  // Campus 是一个动作而不是图层：把相机带回 Homewood，不往图上加任何东西。
+  // 令牌初值为 0，所以首次挂载不会抢走地图自己的开场镜头。
+  useEffect(() => {
+    if (!recenterToken) return
+    const map = mapRef.current
+    if (!map) return
+    try {
+      map.easeTo({ center: HOMEWOOD, zoom: Math.max(map.getZoom(), 16), duration: 700 })
+    } catch {
+      // 地图还在启动；它本来就以 Homewood 为中心打开。
+    }
+  }, [recenterToken])
 
   useEffect(() => {
     const map = mapRef.current
