@@ -24,6 +24,13 @@ class Places:
         self.entryways = entryways
         self.elevators = elevators
         self._names = [f["properties"]["name"] for f in facilities]
+        # Doors never move, so resolve each building once and keep it. Without
+        # this, finding them was 25 ms of a 27 ms route — an order of magnitude
+        # more than the A* it feeds.
+        self._doors = {}
+        # Point-in-polygon and distance-to-edge are per-vertex; a bounding box
+        # rejects almost every candidate for a fraction of the cost.
+        self._bbox = {}
 
     def index(self):
         """Compact list for a model to resolve free text against. Names only —
@@ -72,6 +79,16 @@ class Places:
             return None, [f["properties"]["name"] for f in hits]
         return None, []
 
+    def _bounds(self, feature, name):
+        if name not in self._bbox:
+            pts = [p for r in rings(feature) for p in r]
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            pad = NEAR_M / 111320.0 * 1.6      # generous: degrees, near 39N
+            self._bbox[name] = (min(xs) - pad, min(ys) - pad,
+                                max(xs) + pad, max(ys) + pad)
+        return self._bbox[name]
+
     def entrances(self, feature, lifts=True):
         """Points that count as a way into this place.
 
@@ -80,13 +97,20 @@ class Places:
         a door you did not need.
         """
         name = feature["properties"]["name"]
+        cached = self._doors.get((name, lifts))
+        if cached is not None:
+            return cached
+
         rs = rings(feature)
         others = [n for n in self._names if n != name]
+        xmin, ymin, xmax, ymax = self._bounds(feature, name)
 
         def claimed_elsewhere(label):
             return any(label.startswith(o) for o in others)
 
         def inside(pt):
+            if not (xmin <= pt[0] <= xmax and ymin <= pt[1] <= ymax):
+                return False
             return (any(in_ring(pt, r) for r in rs)
                     or dist_to_rings(pt, rs) < NEAR_M)
 
@@ -106,6 +130,7 @@ class Places:
                 found.append({"point": pt, "label": label, "kind": "lift"})
 
         if not found:
-            return [{"point": centroid(feature), "kind": "centre",
-                     "label": name + " (building centre)"}]
+            found = [{"point": centroid(feature), "kind": "centre",
+                      "label": name + " (building centre)"}]
+        self._doors[(name, lifts)] = found
         return found
