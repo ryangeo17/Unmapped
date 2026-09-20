@@ -10,6 +10,7 @@ import {
   Footprints,
   Layers3,
   LocateFixed,
+  Map,
   MapPin,
   Menu,
   Moon,
@@ -128,6 +129,9 @@ function MainMapPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showGraph, setShowGraph] = useState(false)
+  const [showCampus, setShowCampus] = useState(false)
+  // The smarter planner: lawn shortcuts and any-door arrival. Walking only.
+  const [smarter, setSmarter] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [avoidedHazards, setAvoidedHazards] = useState<string[]>([])
   const [suggestionOpen, setSuggestionOpen] = useState(false)
@@ -235,11 +239,14 @@ function MainMapPage() {
     setError('')
     try {
       const result = await api.calculateRoute({
-        start: start.coordinates,
-        destination: destination.coordinates,
+        start,
+        destination,
         mode,
         time,
-        avoidHazardIds: avoidIds,
+        smarter,
+        avoidEdgeIds: route?.hazards
+          .filter((hazard) => avoidIds.includes(hazard.id) && hazard.edgeId)
+          .map((hazard) => hazard.edgeId as string),
       })
       setRoute(result)
       setDemoProgress(0)
@@ -291,6 +298,7 @@ function MainMapPage() {
         <div className="brand"><span className="brand-logo"><RouteIcon size={22} /></span><span><strong>UnMapped</strong><small>Routes for every body</small></span></div>
         <div className="top-actions">
           <button className={`secondary-button overlay-button ${showGraph ? 'active' : ''}`} onClick={() => setShowGraph((show) => !show)} aria-pressed={showGraph}><Layers3 size={17} /> Graph</button>
+            <button className={`secondary-button overlay-button ${showCampus ? 'active' : ''}`} onClick={() => setShowCampus((show) => !show)} aria-pressed={showCampus} title="JHU survey: buildings, entrances, paving and stairs"><Map size={17} /> Campus</button>
           <button className="secondary-button" onClick={() => { setSuggestionOpen(true); setSuggestionDrawing(true); setSuggestionReference('') }}><Plus size={17} /> Suggest a route</button>
           <Link className="admin-link" to="/admin">Admin</Link>
         </div>
@@ -324,17 +332,45 @@ function MainMapPage() {
               <div>{MODE_OPTIONS.map(({ value, label, Icon }) => <button type="button" key={value} className={mode === value ? 'selected' : ''} aria-pressed={mode === value} onClick={() => setMode(value)}><Icon size={20} /><span>{label}</span></button>)}</div>
             </fieldset>
             <div className="preference-row"><span><strong>Route conditions</strong><small>Safety scoring adapts by time</small></span><div className="time-toggle"><button className={time === 'day' ? 'selected' : ''} onClick={() => setTime('day')} aria-label="Day route"><Sun size={17} /> Day</button><button className={time === 'night' ? 'selected' : ''} onClick={() => setTime('night')} aria-label="Night route"><Moon size={17} /> Night</button></div></div>
+            <div className="preference-row"><span><strong>Smarter planner</strong><small>{smarter ? 'Walking may cut across lawns and use any door or lift' : 'Walking stays on surveyed paths and signed entrances'}</small></span><div className="time-toggle"><button className={smarter ? 'selected' : ''} onClick={() => setSmarter(true)} aria-pressed={smarter} aria-label="Smarter planner on"><Sparkles size={17} /> On</button><button className={!smarter ? 'selected' : ''} onClick={() => setSmarter(false)} aria-pressed={!smarter} aria-label="Smarter planner off"><RouteIcon size={17} /> Off</button></div></div>
             {(error || geoError) && <div className="alert alert--error" role="alert"><CircleAlert size={18} /><span>{error || geoError}</span></div>}
             <button className="primary-button route-button" onClick={() => calculateRoute()} disabled={loading}>{loading ? <><span className="spinner" /> Finding your best route…</> : <><Navigation size={19} /> Find my route</>}</button>
 
             {route && <section className="route-result" aria-live="polite">
               <div className="result-heading"><div><p className="eyebrow">Recommended route</p><h2>{distance} · {route.durationMinutes} min</h2></div><span className="verified-badge"><CheckCircle2 size={16} /> {route.verifiedPercent}% verified</span></div>
               <p className="route-reason"><Sparkles size={18} /> {route.explanation}</p>
+              {(route.startDoor || route.endDoor) && (
+                <dl className="route-doors">
+                  {route.startDoor && (
+                    <div><dt>Starts</dt><dd>{route.startDoor.label}</dd></div>
+                  )}
+                  {route.endDoor && (
+                    <div>
+                      <dt>Arrives</dt>
+                      <dd>
+                        {route.endDoor.label}
+                        {route.endDoor.kind === 'lift' && <span className="door-badge">lift</span>}
+                      </dd>
+                    </div>
+                  )}
+                  {route.shortcutMeters > 0 && (
+                    <div>
+                      <dt>Shortcut</dt>
+                      <dd>{Math.round(route.shortcutMeters)} m across {route.shortcutSpaces.join(', ')}</dd>
+                    </div>
+                  )}
+                  {route.riserCount > 0 && (
+                    <div><dt>Steps</dt><dd>{route.riserCount} risers</dd></div>
+                  )}
+                </dl>
+              )}
               <div className="stats-grid">
                 <Stat label="Distance" value={distance} Icon={RouteIcon} />
                 <Stat label="Estimated" value={`${route.durationMinutes} min`} Icon={Clock3} />
                 <Stat label="Accessible" value={`${route.accessibilityScore}/100`} Icon={Accessibility} />
-                <Stat label={`${time} safety`} value={`${route.safetyScore}/100`} Icon={ShieldCheck} />
+                {/* Null until something surveys security coverage; "0/100"
+                    would read as dangerous rather than as unmeasured. */}
+                <Stat label={`${time} safety`} value={route.safetyScore === null ? 'Not surveyed' : `${route.safetyScore}/100`} Icon={ShieldCheck} />
               </div>
               {route.hazards.length > 0 && (
                 <div className="route-cautions">
@@ -367,7 +403,7 @@ function MainMapPage() {
         </aside>
 
         <div className="map-wrap">
-          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} nighttime={time === 'night'} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
+          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} showCampus={showCampus} nighttime={time === 'night'} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
           <div className="legend" aria-label="Map legend">
             <strong>Map key</strong>
             <span><i className="legend-line legend-line--route" /> Selected route</span>

@@ -6,9 +6,13 @@ survey confidence. It supports walking, wheelchair, mobility-scooter, and
 bicycle routing. Routes are computed by the FastAPI backend over individual
 graph edges; they are not hard-coded complete paths.
 
-> **Demo data:** Every checked-in survey measurement, hazard, verification, and
-> evidence image is synthetic placeholder data for the hackathon. Unverified
-> segments remain routable and are explicitly labeled.
+> **Data:** The graph is JHU's own published campus survey — 3,635 nodes and
+> 4,903 segments, including its 2021 accessibility grading, 390 mapped doors
+> and lifts, and the live construction closures. Slope, surface, roughness,
+> lighting and security were never surveyed and are stored as null rather than
+> defaulted; routes disclose how much of their length is unmeasured. Every
+> segment is unverified until this project's robot has seen it. Hazards and
+> evidence images remain synthetic.
 
 ## Architecture
 
@@ -16,7 +20,10 @@ graph edges; they are not hard-coded complete paths.
   browser geolocation, and the deterministic Demo GPS simulator.
 - `backend/`: FastAPI, SQLAlchemy/SQLite persistence, graph routing, public
   submissions, admin sessions, and simulated robot-verification jobs.
-- `data/`: editable campus landmarks, graph segments, and hazards.
+- `data/`: generated campus landmarks, doors, graph segments, and hazards —
+  rebuild with `python3 scripts/build_campus_seed.py`, do not hand-edit.
+- `scripts/`: the seed builder and the exporters that produced
+  `frontend/public/data` from JHU's ArcGIS portal and basemap tiles.
 - `docs/SEED_DATA_GUIDE.md`: swapping in the team's five real surveys.
 - `docs/DEMO_SCRIPT.md`: deterministic judge walkthrough.
 

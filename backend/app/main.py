@@ -262,6 +262,33 @@ def list_landmarks(db: Annotated[Session, Depends(get_db)]) -> list[dict]:
     return out
 
 
+@app.get("/api/nodes/nearest")
+def nearest_node(
+    lat: float, lng: float, db: Annotated[Session, Depends(get_db)]
+) -> dict:
+    """Snap a map click to the pavement network.
+
+    The frontend used to do this by downloading the whole graph and scanning
+    it client-side, which was 2.2 MB per lookup once the graph became real.
+    """
+    best, best_d = None, float("inf")
+    for node in db.scalars(select(GraphNode)).all():
+        # Planar is exact enough at campus scale and far cheaper than haversine.
+        dx = (node.longitude - lng) * 111320 * 0.7735
+        dy = (node.latitude - lat) * 110540
+        d = dx * dx + dy * dy
+        if d < best_d:
+            best, best_d = node, d
+    if best is None:
+        raise HTTPException(404, "The graph has no nodes")
+    return {
+        "id": best.id,
+        "latitude": best.latitude,
+        "longitude": best.longitude,
+        "distance_m": round(best_d ** 0.5, 1),
+    }
+
+
 @app.get("/api/graph")
 @app.get("/api/graph/overlay")
 @app.get("/api/map/graph")

@@ -1,8 +1,26 @@
 # Replacing demo survey data
 
-All checked-in locations and measurements are synthetic hackathon demo data.
-They are deliberately separated from routing and UI logic so the five real
-robot surveys can replace records without code changes.
+The graph, landmarks and doors are now generated from JHU's published campus
+data by `scripts/build_campus_seed.py`. Edit that script, not the JSON it
+writes — a hand edit is lost on the next rebuild.
+
+    python3 scripts/build_campus_seed.py     # ~40s, the lawn-shortcut pass
+
+## What is measured and what is not
+
+`distance_m`, `stairs`, `curb`, `closed`, `bidirectional`, `grade`,
+`riser_count` and `kind` come from the survey. **`surface`, `roughness`,
+`slope`, `safety` and `lit` are null**, because nobody has measured them here.
+
+Null means unknown and the cost function skips the term. Do not "fix" it with
+a default: zero slope and 1.0 safety make every unsurveyed segment look ideal,
+and `edge_cost` deliberately tests `edge.lit is False` rather than
+`not edge.lit` for the same reason. Filling these in is what the robot
+surveys are for, and `verified_stats.unknown_attribute_m` is how much of a
+route is still waiting.
+
+Every imported edge is `verified: false`. JHU's survey is not this project's
+robot, and leaving the pipeline real work to do is the point.
 
 ## Replacement checklist
 

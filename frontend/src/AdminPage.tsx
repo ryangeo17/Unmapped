@@ -158,15 +158,24 @@ export default function AdminPage() {
                   distanceMeters: 0,
                   durationMinutes: 0,
                   accessibilityScore: 0,
-                  safetyScore: 0,
+                  safetyScore: null,
                   verifiedPercent: 0,
                   explanation: '',
                   steps: [],
                   hazards: [],
+                  riserCount: 0,
+                  shortcutMeters: 0,
+                  shortcutSpaces: [],
+                  unknownMeters: 0,
+                  compliantPercent: null,
+                  smarter: false,
+                  startDoor: null,
+                  endDoor: null,
                 }}
                 suggestionPoints={[]}
                 suggestionMode={false}
                 showGraph={false}
+                showCampus={false}
                 avoidedHazards={[]}
                 onAvoidHazard={() => undefined}
                 onSuggestionPoint={() => undefined}

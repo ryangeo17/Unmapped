@@ -269,3 +269,10 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Route arrival details: which door, which lawn, how many steps. */
+.route-doors { display: grid; gap: 6px; margin: 10px 0 0; font-size: 0.82rem; }
+.route-doors div { display: flex; gap: 10px; align-items: baseline; }
+.route-doors dt { flex: 0 0 62px; color: var(--muted); }
+.route-doors dd { margin: 0; color: #12243c; font-weight: 600; }
+.door-badge { margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: var(--pale); color: var(--blue-dark); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }

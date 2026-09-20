@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { addCampusLayers, loadCampusData, setCampusVisibility } from './campusLayers'
 import type { Hazard, LatLng, RouteResult } from './types'
 
 const HOMEWOOD: [number, number] = [-76.6205, 39.3299]
@@ -37,6 +38,7 @@ interface MapViewProps {
   suggestionPoints: LatLng[]
   suggestionMode: boolean
   showGraph: boolean
+  showCampus: boolean
   nighttime?: boolean
   avoidedHazards: string[]
   onAvoidHazard: (hazard: Hazard) => void
@@ -49,6 +51,7 @@ export default function MapView({
   suggestionPoints,
   suggestionMode,
   showGraph,
+  showCampus,
   nighttime = false,
   avoidedHazards,
   onAvoidHazard,
@@ -87,16 +90,8 @@ export default function MapView({
       }
     })
     map.on('style.load', () => {
-      map.addSource('unmapped-graph', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('unmapped-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('unmapped-suggestion', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      map.addLayer({
-        id: 'unmapped-graph',
-        type: 'line',
-        source: 'unmapped-graph',
-        slot: 'middle',
-        paint: { 'line-color': '#4b83c3', 'line-width': 2, 'line-opacity': 0.38, 'line-dasharray': [2, 3] },
-      })
       map.addLayer({
         id: 'unmapped-route-shadow',
         type: 'line',
@@ -118,6 +113,10 @@ export default function MapView({
         slot: 'top',
         paint: { 'line-color': '#7c3aed', 'line-width': 5, 'line-dasharray': [1, 1.5] },
       })
+      // Added at style load so they sit below the route, which is added above
+      // them here and stays above them: Mapbox draws in the order layers were
+      // added within a slot, and the route is in 'top'.
+      addCampusLayers(map)
     })
     mapRef.current = map
     return () => {
@@ -133,15 +132,33 @@ export default function MapView({
     if (!map) return
     const update = () => {
       setLineData(map, 'unmapped-route', route?.coordinates ? [route.coordinates] : [])
-      setLineData(map, 'unmapped-graph', showGraph ? route?.graphEdges || [] : [])
-      setLineData(map, 'unmapped-suggestion', suggestionPoints.length > 1 ? [suggestionPoints] : [])
-      if (map.getLayer('unmapped-graph')) {
-        map.setLayoutProperty('unmapped-graph', 'visibility', showGraph ? 'visible' : 'none')
+      // The routing graph is now 4,903 real segments; shipping it inside every
+      // route response was 2.2 MB a time. It is a campus layer of its own.
+      if (map.getLayer('campus-pathways')) {
+        for (const id of ['campus-pathways', 'campus-pathways-stairs']) {
+          map.setLayoutProperty(id, 'visibility',
+            showGraph || showCampus ? 'visible' : 'none')
+        }
+        if (showGraph) void loadCampusData(map)
       }
+      setLineData(map, 'unmapped-suggestion', suggestionPoints.length > 1 ? [suggestionPoints] : [])
     }
     if (map.isStyleLoaded()) update()
     else map.once('style.load', update)
-  }, [route, showGraph, suggestionPoints])
+  }, [route, showGraph, showCampus, suggestionPoints])
+
+  // The campus overlay is ~4 MB of GeoJSON, so it is fetched the first time it
+  // is switched on and kept thereafter.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const update = () => {
+      setCampusVisibility(map, showCampus)
+      if (showCampus) void loadCampusData(map)
+    }
+    if (map.isStyleLoaded()) update()
+    else map.once('style.load', update)
+  }, [showCampus])
 
   useEffect(() => {
     const map = mapRef.current

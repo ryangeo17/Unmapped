@@ -22,16 +22,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-interface Overlay {
-  nodes: { id: string; name: string; latitude: number; longitude: number }[]
-  edges: { id: string; from_node: string; to_node: string; closed: boolean; verified?: boolean }[]
-  hazards: { id: string; edge_id?: string; latitude: number; longitude: number }[]
-}
-
-function getOverlay() {
-  return request<Overlay>('/graph/overlay')
-}
-
 function distanceMeters(a: LatLng, b: LatLng) {
   const toRadians = (value: number) => (value * Math.PI) / 180
   const dLat = toRadians(b[0] - a[0])
@@ -42,11 +32,10 @@ function distanceMeters(a: LatLng, b: LatLng) {
 }
 
 async function nearestNode(point: LatLng) {
-  const overlay = await getOverlay()
-  return overlay.nodes.reduce((best, node) => {
-    const candidate = distanceMeters(point, [node.latitude, node.longitude])
-    return candidate < best.distance ? { id: node.id, distance: candidate } : best
-  }, { id: overlay.nodes[0]?.id || '', distance: Number.POSITIVE_INFINITY }).id
+  const snapped = await request<{ id: string }>(
+    `/nodes/nearest?lat=${point[0]}&lng=${point[1]}`,
+  )
+  return snapped.id
 }
 
 function mapSubmission(item: Record<string, unknown>): Submission {
@@ -105,28 +94,37 @@ export const api = {
   },
 
   async calculateRoute(input: {
-    start: LatLng
-    destination: LatLng
+    start: Landmark
+    destination: Landmark
     mode: TravelMode
     time: 'day' | 'night'
-    avoidHazardIds?: string[]
+    smarter?: boolean
+    avoidEdgeIds?: string[]
   }): Promise<RouteResult> {
-    const overlay = await getOverlay()
-    const [start, end] = await Promise.all([nearestNode(input.start), nearestNode(input.destination)])
-    const avoidEdges = overlay.hazards
-      .filter((hazard) => input.avoidHazardIds?.includes(hazard.id) && hazard.edge_id)
-      .map((hazard) => hazard.edge_id as string)
+    // Places go to the backend by name. It knows every door of each one and
+    // picks whichever is actually nearest, which snapping a single coordinate
+    // here cannot do — and it saves pulling the 2.2 MB graph overlay three
+    // times per route just to find one node.
+    const avoidEdges = input.avoidEdgeIds ?? []
     const result = await request<{
       start_node: string
       end_node: string
       geometry: [number, number][]
       edge_ids: string[]
       steps: { instruction: string; distance_m: number }[]
-      scores: { safety: number; accessibility: number }
+      scores: { safety: number | null; accessibility: number }
+      smarter: boolean
+      start_door: { label: string; kind: string; step_free: boolean } | null
+      end_door: { label: string; kind: string; step_free: boolean } | null
       verified_stats: {
         distance_m: number
         estimated_seconds: number
         verified_percent?: number
+        riser_count?: number
+        shortcut_m?: number
+        shortcut_spaces?: string[]
+        unknown_attribute_m?: number
+        fully_compliant_percent?: number | null
       }
       hazards: Array<{
         id: string
@@ -143,43 +141,47 @@ export const api = {
     }>('/routes/compute', {
       method: 'POST',
       body: JSON.stringify({
-        start,
-        end,
+        start: input.start.name,
+        end: input.destination.name,
         mode: input.mode,
         nighttime: input.time === 'night',
+        smarter: input.smarter ?? true,
         avoid_edges: avoidEdges,
       }),
     })
     const coordinates = result.geometry.map<LatLng>((point) => [point[1], point[0]])
-    const routeHazards = result.hazards.map<Hazard>((hazard) => {
-      const overlayHazard = overlay.hazards.find((item) => item.id === hazard.id)
-      return {
-        id: hazard.id,
-        title: hazard.title,
-        description: hazard.description || 'Robot-observed caution on this path segment.',
-        severity: hazard.severity >= 3 ? 'high' : hazard.severity === 2 ? 'medium' : 'low',
-        coordinates: [
-          hazard.latitude ?? overlayHazard?.latitude ?? coordinates[0][0],
-          hazard.longitude ?? overlayHazard?.longitude ?? coordinates[0][1],
-        ],
-        verified: hazard.verified ?? false,
-        evidence: hazard.evidence?.map((path) => path.startsWith('http') ? path : `${API_ORIGIN}${path}`),
-      }
-    })
-    const nodeMap = new Map(overlay.nodes.map((node) => [node.id, node]))
-    const graphEdges = overlay.edges.map((edge) => {
-      const from = nodeMap.get(edge.from_node)
-      const to = nodeMap.get(edge.to_node)
-      return from && to ? [[from.latitude, from.longitude], [to.latitude, to.longitude]] as LatLng[] : []
-    }).filter((edge) => edge.length === 2)
+    const routeHazards = result.hazards.map<Hazard>((hazard) => ({
+      id: hazard.id,
+      edgeId: hazard.edge_id,
+      title: hazard.title,
+      description: hazard.description || 'Robot-observed caution on this path segment.',
+      severity: hazard.severity >= 3 ? 'high' : hazard.severity === 2 ? 'medium' : 'low',
+      coordinates: [
+        hazard.latitude ?? coordinates[0][0],
+        hazard.longitude ?? coordinates[0][1],
+      ],
+      verified: hazard.verified ?? false,
+      evidence: hazard.evidence?.map((path) => path.startsWith('http') ? path : `${API_ORIGIN}${path}`),
+    }))
+    const stats = result.verified_stats
     return {
       id: `${result.start_node}-${result.end_node}-${input.mode}`,
       coordinates,
       distanceMeters: result.verified_stats.distance_m,
       durationMinutes: Math.max(1, Math.round(result.verified_stats.estimated_seconds / 60)),
       accessibilityScore: Math.round(result.scores.accessibility),
-      safetyScore: Math.round(result.scores.safety),
-      verifiedPercent: Math.round(result.verified_stats.verified_percent ?? 0),
+      // Null once the synthetic safety readings are gone: nobody has surveyed
+      // security coverage here yet, and a score of 0 would read as dangerous.
+      safetyScore: result.scores.safety === null ? null : Math.round(result.scores.safety),
+      verifiedPercent: Math.round(stats.verified_percent ?? 0),
+      riserCount: stats.riser_count ?? 0,
+      shortcutMeters: stats.shortcut_m ?? 0,
+      shortcutSpaces: stats.shortcut_spaces ?? [],
+      unknownMeters: stats.unknown_attribute_m ?? 0,
+      compliantPercent: stats.fully_compliant_percent ?? null,
+      smarter: result.smarter,
+      startDoor: result.start_door,
+      endDoor: result.end_door,
       explanation: result.explanation.join(' '),
       steps: result.steps.map((step, index) => ({
         instruction: step.instruction,
@@ -187,7 +189,6 @@ export const api = {
         coordinates: coordinates[Math.min(index, coordinates.length - 1)],
       })),
       hazards: routeHazards,
-      graphEdges,
       alternatives: [],
     }
   },
