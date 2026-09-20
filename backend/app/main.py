@@ -24,6 +24,7 @@ from .core import (
     GraphNode,
     Hazard,
     Landmark,
+    LandmarkDoor,
     RobotJob,
     Submission,
     UPLOAD_DIR,
@@ -46,6 +47,9 @@ class RouteRequest(BaseModel):
     end: str = Field(min_length=1, max_length=120)
     mode: Mode = "walking"
     nighttime: bool = False
+    # The smarter planner: lawn shortcuts and any-door arrival. Walking only —
+    # a shortcut inferred from geometry has no business in a wheelchair answer.
+    smarter: bool = True
     avoid_edges: list[str] = Field(default_factory=list, max_length=100)
 
     @field_validator("start", "end")
@@ -222,20 +226,40 @@ def health(db: Annotated[Session, Depends(get_db)]) -> dict:
 
 @app.get("/api/landmarks")
 def list_landmarks(db: Annotated[Session, Depends(get_db)]) -> list[dict]:
+    """Every searchable place.
+
+    A place now has several doors rather than one node, so the coordinate
+    reported here is its step-free door where there is one and its first door
+    otherwise — enough to drop a pin and to centre the map. Routing resolves
+    the doors again itself and picks whichever is actually nearest.
+    """
     nodes = {node.id: node for node in db.scalars(select(GraphNode)).all()}
-    return [
-        {
+    doors: dict[str, list[LandmarkDoor]] = {}
+    for door in db.scalars(select(LandmarkDoor)).all():
+        doors.setdefault(door.landmark_id, []).append(door)
+
+    out = []
+    for item in db.scalars(select(Landmark).order_by(Landmark.name)).all():
+        mine = doors.get(item.id) or []
+        pick = next((d for d in mine if d.step_free), mine[0] if mine else None)
+        node = nodes.get(pick.node_id) if pick else None
+        if node is None:
+            continue
+        out.append({
             "id": item.id,
             "name": item.name,
             "description": item.description,
             "category": item.category,
             "accessible": item.accessible,
-            "node_id": item.node_id,
-            "latitude": nodes[item.node_id].latitude,
-            "longitude": nodes[item.node_id].longitude,
-        }
-        for item in db.scalars(select(Landmark).order_by(Landmark.name)).all()
-    ]
+            "alias": item.alias,
+            "node_id": pick.node_id,
+            "doors": len(mine),
+            # How far the mapped pavement stops short of this place.
+            "snap_m": round(pick.snap_m, 1),
+            "latitude": node.latitude,
+            "longitude": node.longitude,
+        })
+    return out
 
 
 @app.get("/api/graph")
@@ -255,6 +279,8 @@ def graph_overlay(db: Annotated[Session, Depends(get_db)]) -> dict:
                 "lit": e.lit, "closed": e.closed, "bidirectional": e.bidirectional, "source": e.source,
                 "verified": e.verified, "verified_at": e.verified_at,
                 "confidence": e.confidence, "construction": e.construction,
+                "grade": e.grade, "riser_count": e.riser_count,
+                "kind": e.kind, "space": e.space,
             }
             for e in edges
         ],
@@ -286,7 +312,8 @@ def hazard_detail(hazard_id: str, db: Annotated[Session, Depends(get_db)]) -> di
 @app.post("/api/routes")
 @app.post("/api/routes/compute")
 def route(request: RouteRequest, db: Annotated[Session, Depends(get_db)]) -> dict:
-    return compute_route(db, request.start, request.end, request.mode, request.nighttime, set(request.avoid_edges))
+    return compute_route(db, request.start, request.end, request.mode, request.nighttime,
+                         set(request.avoid_edges), request.smarter)
 
 
 @app.post("/api/routes/recalculate")
@@ -294,7 +321,8 @@ def recalculate(request: RecalculateRequest, db: Annotated[Session, Depends(get_
     avoided = set(request.avoid_edges)
     if request.avoid_previous_route:
         avoided.update(request.previous_edge_ids)
-    return compute_route(db, request.start, request.end, request.mode, request.nighttime, avoided)
+    return compute_route(db, request.start, request.end, request.mode, request.nighttime,
+                         avoided, request.smarter)
 
 
 @app.post("/api/submissions", status_code=201)

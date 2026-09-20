@@ -30,9 +30,33 @@ class Landmark(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, default="")
-    node_id: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"))
     category: Mapped[str] = mapped_column(String(40), default="building")
     accessible: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A second name the place is commonly searched by: "MSEL", or the wording
+    # an earlier seed used ("MSE Library" for Milton S. Eisenhower Library).
+    alias: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+
+
+class LandmarkDoor(Base):
+    """Where you can actually arrive at a place.
+
+    A building has several doors and which one is nearest decides the route,
+    so this replaces the old one-landmark-one-node link. San Martin Garage is
+    the case that forces it: the survey records no entrance for it at all, only
+    a lift, and aiming at the building centre instead walks you 169 m further
+    round the block.
+    """
+    __tablename__ = "landmark_doors"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    landmark_id: Mapped[str] = mapped_column(ForeignKey("landmarks.id"), index=True)
+    node_id: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"), index=True)
+    label: Mapped[str] = mapped_column(String(160), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="entrance")
+    step_free: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Distance from the door to the pavement node it snaps to. Seven
+    # off-campus buildings are 165-338 m out; the route ends where the mapped
+    # network does, and says so.
+    snap_m: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class GraphNode(Base):
@@ -49,13 +73,27 @@ class GraphEdge(Base):
     from_node: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"), index=True)
     to_node: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"), index=True)
     distance_m: Mapped[float] = mapped_column(Float)
-    surface: Mapped[str] = mapped_column(String(30), default="paved")
-    roughness: Mapped[float] = mapped_column(Float, default=0)
-    slope: Mapped[float] = mapped_column(Float, default=0)
-    safety: Mapped[float] = mapped_column(Float, default=1)
+    # Null means nobody has measured it. Not "fine" — a default of 0 slope and
+    # 1.0 safety would make every unsurveyed segment look ideal, which is
+    # exactly the person this app exists for being misled. edge_cost() skips
+    # the term and compute_route() discloses the distance involved.
+    surface: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    roughness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    slope: Mapped[float | None] = mapped_column(Float, nullable=True)
+    safety: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     stairs: Mapped[bool] = mapped_column(Boolean, default=False)
     curb: Mapped[bool] = mapped_column(Boolean, default=False)
-    lit: Mapped[bool] = mapped_column(Boolean, default=True)
+    # From JHU's own accessibility survey: FullyCompliant, PartiallyCompliant
+    # or NonCompliant ("may have travel hazards"). The real substitute for the
+    # slope reading this data does not carry.
+    grade: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    riser_count: Mapped[int] = mapped_column(Integer, default=0)
+    # paved / stairs / ramp / indoor / shortcut. Shortcuts are lawn desire
+    # paths inferred from geometry, so they are opt-in and walking-only.
+    kind: Mapped[str] = mapped_column(String(20), default="paved", index=True)
+    # Which lawn a shortcut crosses, so the route can name it.
+    space: Mapped[str | None] = mapped_column(String(80), nullable=True)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.55)
@@ -135,23 +173,49 @@ def get_db() -> Generator[Session, None, None]:
         yield db
 
 
-def _load_json(name: str) -> list[dict]:
+def _load_json(name: str):
     with (DATA_DIR / name).open(encoding="utf-8") as file:
         return json.load(file)
 
 
+def _columns(model) -> set[str]:
+    return {column.key for column in model.__table__.columns}
+
+
+def _rows(model, items):
+    """Keep only keys the table actually has.
+
+    The seed files carry a little provenance the database does not model — a
+    shortcut edge records which lawn it crosses — and splatting an unknown key
+    into the ORM constructor is a TypeError at startup.
+    """
+    allowed = _columns(model)
+    return [model(**{k: v for k, v in item.items() if k in allowed}) for item in items]
+
+
 def seed_database(db: Session) -> None:
     """Idempotently import the editable checked-in Homewood graph."""
+    graph = None
     if not db.scalar(select(GraphNode.id).limit(1)):
-        db.add_all(GraphNode(**item) for item in _load_json("homewood_graph.json")["nodes"])
+        graph = _load_json("homewood_graph.json")
+        db.add_all(_rows(GraphNode, graph["nodes"]))
         db.commit()
     if not db.scalar(select(GraphEdge.id).where(GraphEdge.source == "seed").limit(1)):
-        db.add_all(GraphEdge(**item, source="seed", published=True) for item in _load_json("homewood_graph.json")["edges"])
+        graph = graph or _load_json("homewood_graph.json")
+        edges = _rows(GraphEdge, graph["edges"])
+        for edge in edges:
+            edge.source = "seed"
+            edge.published = True
+        db.add_all(edges)
         db.commit()
     if not db.scalar(select(Landmark.id).limit(1)):
-        db.add_all(Landmark(**item) for item in _load_json("homewood_landmarks.json"))
+        db.add_all(_rows(Landmark, _load_json("homewood_landmarks.json")))
+        db.commit()
+    if not db.scalar(select(LandmarkDoor.id).limit(1)):
+        db.add_all(_rows(LandmarkDoor, _load_json("homewood_doors.json")))
+        db.commit()
     if not db.scalar(select(Hazard.id).limit(1)):
-        db.add_all(Hazard(**item) for item in _load_json("homewood_hazards.json"))
+        db.add_all(_rows(Hazard, _load_json("homewood_hazards.json")))
     db.commit()
 
 

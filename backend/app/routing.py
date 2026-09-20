@@ -3,22 +3,50 @@ from __future__ import annotations
 import heapq
 import json
 import math
+import re
 from dataclasses import dataclass
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .core import GraphEdge, GraphNode, Hazard, Landmark
+from .core import GraphEdge, GraphNode, Hazard, Landmark, LandmarkDoor
 
+
+STOPWORDS = {"the", "and", "for", "building", "hall", "center", "centre", "house"}
 
 SPEED_MPS = {"walking": 1.35, "wheelchair": 1.05, "scooter": 3.8, "bicycle": 4.5}
+# Grass is 1.25 for walking because the campus network's own walktime implies
+# 1.31 m/s on pavement and turf walks at about 1.05; without it a lawn diagonal
+# is priced as though it were a footpath and gets taken when it should not.
 SURFACE_PENALTY = {
-    "walking": {"paved": 1.0, "brick": 1.08, "gravel": 1.25, "dirt": 1.4},
-    "wheelchair": {"paved": 1.0, "brick": 1.3, "gravel": 2.2, "dirt": 3.0},
-    "scooter": {"paved": 1.0, "brick": 1.45, "gravel": 2.5, "dirt": 3.5},
-    "bicycle": {"paved": 1.0, "brick": 1.2, "gravel": 1.45, "dirt": 1.8},
+    "walking": {"paved": 1.0, "brick": 1.08, "grass": 1.25, "gravel": 1.25, "dirt": 1.4},
+    "wheelchair": {"paved": 1.0, "brick": 1.3, "grass": 3.0, "gravel": 2.2, "dirt": 3.0},
+    "scooter": {"paved": 1.0, "brick": 1.45, "grass": 3.5, "gravel": 2.5, "dirt": 3.5},
+    "bicycle": {"paved": 1.0, "brick": 1.2, "grass": 1.8, "gravel": 1.45, "dirt": 1.8},
 }
+
+
+def _closure_around(edges, nodes: set[str]) -> str | None:
+    """Name the construction sealing these nodes off.
+
+    Called only once the search has already failed, so the question is not
+    whether they are enclosed but what to tell the user. A closure bordering
+    the destination is the answer worth giving: it has a name and an end date,
+    where "no route available" sounds like a gap in the map.
+    """
+    closed = [e for e in edges
+              if e.closed and (e.from_node in nodes or e.to_node in nodes)]
+    if not closed:
+        return None
+    named = {e.space for e in closed if e.space}
+    return sorted(named)[0] if named else "construction"
+
+
+def _door(door) -> dict | None:
+    if door is None or door.kind == "node":
+        return None
+    return {"label": door.label, "kind": door.kind, "step_free": door.step_free}
 
 
 @dataclass
@@ -28,20 +56,101 @@ class Arc:
     reversed: bool
 
 
-def resolve_location(db: Session, value: str) -> str:
+def find_landmark(db: Session, value: str) -> Landmark | None:
+    """Exact id, then exact name or alias, then substring, then all-words.
+
+    The loose tiers matter now that there are 116 places rather than 7: people
+    type "malone" and "the garage". An ambiguous query is answered with its
+    candidates rather than a guess — "the garage" matches four, and silently
+    picking one sends someone to the wrong side of campus.
+    """
+    exact = db.scalar(
+        select(Landmark).where(
+            or_(Landmark.id == value, Landmark.name.ilike(value), Landmark.alias.ilike(value))
+        )
+    )
+    if exact:
+        return exact
+
+    hits = db.scalars(
+        select(Landmark).where(
+            or_(Landmark.name.ilike(f"%{value}%"), Landmark.alias.ilike(f"%{value}%"))
+        )
+    ).all()
+    if not hits:
+        # Drop the words that carry no signal, or "the garage" matches nothing
+        # and a real ambiguity is reported as an unknown place.
+        words = [w for w in re.split(r"[^A-Za-z0-9]+", value.lower())
+                 if len(w) > 2 and w not in STOPWORDS]
+        if words:
+            clauses = [Landmark.name.ilike(f"%{w}%") for w in words]
+            hits = [
+                row for row in db.scalars(select(Landmark).where(or_(*clauses))).all()
+                if all(w.lower() in row.name.lower() for w in words)
+            ]
+    if len(hits) == 1:
+        return hits[0]
+    if hits:
+        raise HTTPException(
+            409,
+            {
+                "error": f"{value!r} matches {len(hits)} places",
+                "candidates": sorted(row.name for row in hits)[:12],
+            },
+        )
+    return None
+
+
+def resolve_doors(db: Session, value: str, step_free: bool = False) -> list[LandmarkDoor]:
+    """Every way into a place, as graph nodes.
+
+    A building has several doors and which one is nearest decides the route, so
+    the search starts from all of them at once. San Martin Garage is the case
+    that forces it: the survey records no entrance for it, only a lift.
+    """
     if db.get(GraphNode, value):
-        return value
-    landmark = db.scalar(select(Landmark).where(or_(Landmark.id == value, Landmark.name.ilike(value))))
-    if landmark:
-        return landmark.node_id
-    raise HTTPException(404, f"Unknown node or landmark: {value}")
+        return [LandmarkDoor(landmark_id="", node_id=value, label=value, kind="node",
+                             step_free=True)]
+
+    landmark = find_landmark(db, value)
+    if landmark is None:
+        raise HTTPException(404, f"Unknown node or landmark: {value}")
+
+    doors = db.scalars(
+        select(LandmarkDoor).where(LandmarkDoor.landmark_id == landmark.id)
+    ).all()
+    if step_free:
+        # A lift is step-free by nature; a door only if the survey says so.
+        preferred = [d for d in doors if d.step_free]
+        doors = preferred or doors
+    if not doors:
+        raise HTTPException(422, f"No mapped entrance for {landmark.name}")
+    return doors
+
+
+# Blocking every NonCompliant segment leaves only 77% of campus reachable by
+# wheelchair, so the official grade is weighted rather than gated. Stairs and
+# unlowered curbs stay hard gates: those are physical, not a preference.
+GRADE_PENALTY = {
+    "wheelchair": {"NonCompliant": 8.0, "PartiallyCompliant": 1.5},
+    "scooter": {"NonCompliant": 4.0, "PartiallyCompliant": 1.3},
+    "bicycle": {"NonCompliant": 1.5, "PartiallyCompliant": 1.1},
+    "walking": {"NonCompliant": 1.0, "PartiallyCompliant": 1.0},
+}
 
 
 def edge_cost(edge: GraphEdge, mode: str, nighttime: bool, hazard_severity: int = 0) -> float:
-    """Single source of truth for travel-mode and day/night edge weighting."""
+    """Single source of truth for travel-mode and day/night edge weighting.
+
+    Every measured attribute is optional. Null means nobody has surveyed it,
+    and an unmeasured term is skipped rather than assumed good — a missing
+    slope must not read as flat, and missing lighting must not read as lit.
+    """
     if edge.closed or not edge.published:
         return math.inf
-    if mode == "wheelchair" and (edge.stairs or edge.curb or abs(edge.slope) > 0.10):
+    if mode == "wheelchair" and (edge.stairs or edge.curb):
+        return math.inf
+    if edge.slope is not None and mode == "wheelchair" and abs(edge.slope) > 0.10:
         return math.inf
     if mode in {"scooter", "bicycle"} and edge.stairs:
         return math.inf
@@ -49,13 +158,19 @@ def edge_cost(edge: GraphEdge, mode: str, nighttime: bool, hazard_severity: int 
         return math.inf
 
     cost = edge.distance_m / SPEED_MPS[mode]
-    cost *= SURFACE_PENALTY[mode].get(edge.surface, 1.4)
-    cost *= 1 + edge.roughness * (2.5 if mode in {"wheelchair", "scooter"} else 0.8)
-    uphill = max(0.0, edge.slope)
-    cost *= 1 + uphill * (8 if mode == "wheelchair" else 3)
-    cost *= 1 + (1 - edge.safety) * (1.8 if nighttime else 0.8)
-    if nighttime and not edge.lit:
+    if edge.surface is not None:
+        cost *= SURFACE_PENALTY[mode].get(edge.surface, 1.4)
+    if edge.roughness is not None:
+        cost *= 1 + edge.roughness * (2.5 if mode in {"wheelchair", "scooter"} else 0.8)
+    if edge.slope is not None:
+        cost *= 1 + max(0.0, edge.slope) * (8 if mode == "wheelchair" else 3)
+    if edge.safety is not None:
+        cost *= 1 + (1 - edge.safety) * (1.8 if nighttime else 0.8)
+    # `is False`, not `not`: unknown lighting must not trigger the unlit penalty.
+    if nighttime and edge.lit is False:
         cost *= 1.7
+    if edge.grade:
+        cost *= GRADE_PENALTY.get(mode, {}).get(edge.grade, 1.0)
     cost *= 1 + hazard_severity * 0.15
     # Verification is a confidence preference, never a safety gate.
     cost *= 0.96 if edge.verified else 1 + max(0.0, 0.7 - edge.confidence) * 0.08
@@ -76,8 +191,17 @@ def compute_route(
     mode: str,
     nighttime: bool,
     avoid_edges: set[str],
+    smarter: bool = True,
 ) -> dict:
-    start, end = resolve_location(db, start_value), resolve_location(db, end_value)
+    # Lawn shortcuts are inferred from geometry, never surveyed, so they are
+    # offered to walking only and only when the switch is on.
+    use_shortcuts = smarter and mode == "walking"
+    step_free = mode in {"wheelchair", "scooter"}
+    start_doors = resolve_doors(db, start_value, step_free)
+    end_doors = resolve_doors(db, end_value, step_free)
+    start_by_node = {d.node_id: d for d in start_doors}
+    end_by_node = {d.node_id: d for d in end_doors}
+
     nodes = {node.id: node for node in db.scalars(select(GraphNode)).all()}
     edges = db.scalars(select(GraphEdge).where(GraphEdge.published.is_(True))).all()
     hazards = db.scalars(select(Hazard).where(Hazard.active.is_(True))).all()
@@ -90,16 +214,23 @@ def compute_route(
     for edge in edges:
         if edge.id in avoid_edges:
             continue
+        if edge.kind == "shortcut" and not use_shortcuts:
+            continue
         graph.setdefault(edge.from_node, []).append(Arc(edge, edge.to_node, False))
         if edge.bidirectional:
             graph.setdefault(edge.to_node, []).append(Arc(edge, edge.from_node, True))
 
-    distances = {start: 0.0}
+    # Multi-source, multi-target: any door of either place will do, and the
+    # search picks whichever pair is actually cheapest.
+    distances = {node: 0.0 for node in start_by_node}
     previous: dict[str, tuple[str, Arc]] = {}
-    queue: list[tuple[float, str]] = [(0.0, start)]
+    queue: list[tuple[float, str]] = [(0.0, node) for node in start_by_node]
+    heapq.heapify(queue)
+    end = None
     while queue:
         current_cost, current = heapq.heappop(queue)
-        if current == end:
+        if current in end_by_node:
+            end = current
             break
         if current_cost != distances.get(current):
             continue
@@ -112,16 +243,27 @@ def compute_route(
                 previous[arc.target] = (current, arc)
                 heapq.heappush(queue, (candidate, arc.target))
 
-    if end not in distances:
+    if end is None:
+        # Distinguish "the network does not go there" from "a closure is in the
+        # way", because the second has a name and an end date. Alumni Memorial
+        # Residence 1 sits inside the AMR 1 Replacement zone, so being
+        # unreachable is the correct answer, not a gap in the data.
+        blocking = _closure_around(edges, set(end_by_node) | set(start_by_node))
+        if blocking:
+            raise HTTPException(
+                422,
+                f"No {mode} route is available: the {blocking} closure is in the way.",
+            )
         raise HTTPException(422, f"No {mode} route is available with the current restrictions")
 
     arcs: list[tuple[str, Arc]] = []
     cursor = end
-    while cursor != start:
+    while cursor in previous:
         prior, arc = previous[cursor]
         arcs.append((prior, arc))
         cursor = prior
     arcs.reverse()
+    start = cursor
 
     path_nodes = [start] + [arc.target for _, arc in arcs]
     route_edges = [arc.edge for _, arc in arcs]
@@ -132,12 +274,30 @@ def compute_route(
     ]
     distance_m = sum(edge.distance_m for edge in route_edges)
     verified_m = sum(edge.distance_m for edge in route_edges if edge.verified)
-    unlit_m = sum(edge.distance_m for edge in route_edges if not edge.lit)
-    rough_m = sum(edge.distance_m for edge in route_edges if edge.roughness >= 0.4)
+    unlit_m = sum(edge.distance_m for edge in route_edges if edge.lit is False)
+    rough_m = sum(edge.distance_m for edge in route_edges
+                  if edge.roughness is not None and edge.roughness >= 0.4)
     stairs = sum(1 for edge in route_edges if edge.stairs)
+    risers = sum(edge.riser_count or 0 for edge in route_edges if edge.stairs)
+    shortcut_m = sum(edge.distance_m for edge in route_edges if edge.kind == "shortcut")
+    shortcut_spaces = sorted({edge.space for edge in route_edges
+                              if edge.kind == "shortcut" and edge.space})
+    # Anything with an unmeasured attribute. Reported rather than assumed good.
+    unknown_m = sum(
+        edge.distance_m for edge in route_edges
+        if edge.slope is None or edge.safety is None or edge.surface is None
+        or edge.roughness is None or edge.lit is None
+    )
+    graded = [edge for edge in route_edges if edge.grade]
+    compliant_m = sum(e.distance_m for e in graded if e.grade == "FullyCompliant")
+
+    # Only average over edges that carry a reading; a null must not be scored
+    # as perfect, and it must not be scored as zero either.
+    measured = [edge for edge in route_edges if edge.safety is not None]
+    measured_m = sum(edge.distance_m for edge in measured)
     safety_score = (
-        round(sum(edge.safety * edge.distance_m for edge in route_edges) / distance_m * 100, 1)
-        if distance_m else 100.0
+        round(sum(e.safety * e.distance_m for e in measured) / measured_m * 100, 1)
+        if measured_m else None
     )
     accessibility_score = max(0.0, round(100 - stairs * 35 - rough_m / max(distance_m, 1) * 30, 1))
 
@@ -149,10 +309,14 @@ def compute_route(
             cautions.append("stairs")
         if arc.edge.curb:
             cautions.append("unlowered curb")
-        if arc.edge.roughness >= 0.4:
+        if arc.edge.roughness is not None and arc.edge.roughness >= 0.4:
             cautions.append("rough surface")
-        if nighttime and not arc.edge.lit:
+        if nighttime and arc.edge.lit is False:
             cautions.append("unlit at night")
+        if arc.edge.grade == "NonCompliant":
+            cautions.append("may have travel hazards")
+        if arc.edge.kind == "shortcut":
+            cautions.append("crosses open lawn")
         steps.append(
             {
                 "index": index,
@@ -164,9 +328,29 @@ def compute_route(
             }
         )
 
+    start_door, end_door = start_by_node.get(start), end_by_node.get(end)
     explanations = [f"Optimized centralized {mode} costs for {'night' if nighttime else 'day'} travel."]
     if mode == "wheelchair":
-        explanations.append("Excluded stairs, unlowered curbs, and steep slopes.")
+        explanations.append("Excluded stairs and unlowered curbs, and heavily penalised "
+                            "segments JHU's survey grades as having travel hazards.")
+    if shortcut_m:
+        explanations.append(
+            f"{shortcut_m:.0f} m of this route crosses open lawn "
+            f"({', '.join(shortcut_spaces) or 'unnamed'}); those segments are inferred "
+            "from the campus basemap, not surveyed."
+        )
+    for door, where in ((start_door, "start"), (end_door, "destination")):
+        if door is not None and door.snap_m > 40:
+            explanations.append(
+                f"The mapped pavement stops {door.snap_m:.0f} m short of the {where}; "
+                "the route ends where the network does."
+            )
+    if unknown_m:
+        explanations.append(
+            f"{unknown_m / max(distance_m, 1) * 100:.0f}% of this route has no slope, "
+            "surface, roughness, lighting or security reading yet. Those segments are "
+            "routed on distance and JHU's accessibility grade alone."
+        )
     if avoid_edges:
         explanations.append(f"Avoided {len(avoid_edges)} user-selected edge(s).")
     if route_hazards:
@@ -179,6 +363,9 @@ def compute_route(
     return {
         "start_node": start,
         "end_node": end,
+        "start_door": _door(start_door),
+        "end_door": _door(end_door),
+        "smarter": use_shortcuts,
         "mode": mode,
         "nighttime": nighttime,
         "geometry": [[nodes[node].longitude, nodes[node].latitude] for node in path_nodes],
@@ -195,9 +382,19 @@ def compute_route(
             "unverified_segments": sum(1 for edge in route_edges if not edge.verified),
             "verified_percent": round(verified_m / distance_m * 100) if distance_m else 100,
             "stairs_count": stairs,
+            "riser_count": risers,
             "rough_surface_m": round(rough_m, 1),
             "unlit_m": round(unlit_m, 1),
-            "max_abs_slope": max((abs(edge.slope) for edge in route_edges), default=0),
+            "shortcut_m": round(shortcut_m, 1),
+            "shortcut_spaces": shortcut_spaces,
+            "unknown_attribute_m": round(unknown_m, 1),
+            "fully_compliant_percent": (
+                round(compliant_m / distance_m * 100) if distance_m else None
+            ),
+            "max_abs_slope": max(
+                (abs(edge.slope) for edge in route_edges if edge.slope is not None),
+                default=None,
+            ),
         },
         "hazards": [
             {
