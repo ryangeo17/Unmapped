@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    imu_topic: /utlidar/imu                         # Go2 lidar-mounted IMU (sensor_msgs/Imu)
+    cloud_topic: /utlidar/cloud                      # Go2 L1 lidar scan (sensor_msgs/PointCloud2)
+    odom_topic: /utlidar/robot_odom                  # Go2 lidar-SLAM pose + velocity (nav_msgs/Odometry)
+    color_topic: /camera/color/image_raw             # RealSense D435i color
+    depth_topic: /camera/depth/image_rect_raw        # RealSense D435i depth (16UC1, mm)
+    color_info_topic: /camera/color/camera_info      # recorded once, for RGBD back-projection
+    depth_info_topic: /camera/depth/camera_info
+    realsense_imu_topic: /camera/imu                 # combined accel+gyro; launch with unite_imu_method:=2
+    sport_mode_state_topic: /sportmodestate          # locomotion controller state (incl. leg-odometry velocity)
+    wireless_controller_topic: /wirelesscontroller   # raw joystick
+    sport_request_topic: /api/sport/request          # high-level commands sent to the sport controller
+    image_rate_hz: 3.0                               # max color/depth save rate; source runs faster, extra frames are dropped
+    output_dir: ~/unmapped_data
+    session_name: ""                                 # blank = timestamp, e.g. 20260920_001500
