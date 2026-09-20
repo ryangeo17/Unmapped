@@ -10,7 +10,9 @@ import re
 from .geometry import centroid, dist_to_rings, in_ring, rings
 
 NEAR_M = 12.0
-STOPWORDS = {"the", "a", "an", "at", "to", "in", "of", "building", "hall"}
+STOPWORDS = {"the", "a", "an", "at", "to", "in", "of",
+             "building", "hall", "center", "centre", "house"}
+FAR_M = 50.0     # how far a door may sit from the building its name names
 
 
 def _norm(text):
@@ -27,7 +29,7 @@ class Places:
         # Doors never move, so resolve each building once and keep it. Without
         # this, finding them was 25 ms of a 27 ms route — an order of magnitude
         # more than the A* it feeds.
-        self._doors = {}
+        self._doors = None
         # Point-in-polygon and distance-to-edge are per-vertex; a bounding box
         # rejects almost every candidate for a fraction of the cost.
         self._bbox = {}
@@ -79,6 +81,108 @@ class Places:
             return None, [f["properties"]["name"] for f in hits]
         return None, []
 
+    def _tokens(self, text):
+        return set(_norm(text).split())
+
+    def _assign(self):
+        """Work out once which place each door belongs to.
+
+        Footprints overlap and abut, so a door can sit inside or within reach
+        of several buildings. Resolved by a ladder, most decisive first:
+
+        1. the door's name starts with a building's name — definitive
+        2. exactly one candidate's polygon actually contains it
+        3. the door's name contains a candidate's name as whole words, e.g.
+           "ROTC side entrance" against "ROTC Building"
+        4. nearest polygon edge
+
+        Outdoor spaces take no doors at all. Arriving at a quad means reaching
+        the quad, not the museum door on its edge.
+        """
+        if self._doors is not None:
+            return self._doors
+
+        doors = {f["properties"]["name"]: [] for f in self.facilities}
+        candidates = [(f["properties"]["name"], rings(f),
+                       self._bounds(f, f["properties"]["name"]))
+                      for f in self.facilities]
+
+        seen_points = {name: set() for name in doors}
+        sources = [(self.entryways, "entrance", "entrance_name"),
+                   (self.elevators, "lift", "description")]
+        for features, kind, field in sources:
+            for e in features:
+                pt = e["geometry"]["coordinates"]
+                label = e["properties"].get(field) or kind
+                near = []
+                for name, rs, (xmin, ymin, xmax, ymax) in candidates:
+                    if label.startswith(name):
+                        near.append((name, rs, True, 0.0))
+                        continue
+                    if not (xmin <= pt[0] <= xmax and ymin <= pt[1] <= ymax):
+                        continue
+                    contains = any(in_ring(pt, r) for r in rs)
+                    distance = 0.0 if contains else dist_to_rings(pt, rs)
+                    if contains or distance < NEAR_M:
+                        near.append((name, rs, contains, distance))
+                if not near:
+                    continue
+
+                named = [n for n in near if label.startswith(n[0])]
+                if named:                                   # 1
+                    winner = max(named, key=lambda n: len(n[0]))
+                else:
+                    inside = [n for n in near if n[2]]
+                    pool = inside or near                   # 2
+                    if len(pool) > 1:
+                        words = self._tokens(label)
+                        worded = [n for n in pool
+                                  if self._tokens(n[0]) and self._tokens(n[0]) <= words]
+                        if worded:                          # 3
+                            pool = worded
+                    winner = min(pool, key=lambda n: (n[3], len(n[0])))  # 4
+
+                name = winner[0]
+                key = (round(pt[0], 7), round(pt[1], 7))
+                if key in seen_points[name]:
+                    # The source data records two doors at one point — Bates
+                    # Tower has DOOR-003660 and DOOR-003670 on the same spot.
+                    # For walking they are one door.
+                    continue
+                seen_points[name].add(key)
+                doors[name].append({"point": pt, "label": label, "kind": kind})
+
+        # Doors just outside everything, whose name still says where they
+        # belong: "Latrobe SW Basement Exit" sits 13.8 m from Latrobe Hall,
+        # past the 12 m radius, and does not start with the full building name.
+        # Match on the distinctive part of the name — the building word minus
+        # Hall, Building, Center and so on.
+        for features, kind, field in sources:
+            for e in features:
+                pt = e["geometry"]["coordinates"]
+                key = (round(pt[0], 7), round(pt[1], 7))
+                if any(key in pts for pts in seen_points.values()):
+                    continue
+                words = self._tokens(e["properties"].get(field) or kind)
+                best = None
+                for name, rs, _ in candidates:
+                    distinctive = self._tokens(name) - STOPWORDS
+                    if not distinctive or not distinctive <= words:
+                        continue
+                    distance = dist_to_rings(pt, rs)
+                    if distance < FAR_M and (best is None or distance < best[1]):
+                        best = (name, distance)
+                if best:
+                    seen_points[best[0]].add(key)
+                    doors[best[0]].append({
+                        "point": pt,
+                        "label": e["properties"].get(field) or kind,
+                        "kind": kind,
+                    })
+
+        self._doors = doors
+        return doors
+
     def _bounds(self, feature, name):
         if name not in self._bbox:
             pts = [p for r in rings(feature) for p in r]
@@ -92,45 +196,15 @@ class Places:
     def entrances(self, feature, lifts=True):
         """Points that count as a way into this place.
 
-        A lift inside the footprint counts: for a garage it is the whole point,
+        A lift inside a footprint counts: for a garage it is the whole point,
         and aiming at the building centre instead walks you round the block to
-        a door you did not need.
+        a door you did not need. Only the smarter search is allowed to notice
+        one, since no signage points at it.
         """
         name = feature["properties"]["name"]
-        cached = self._doors.get((name, lifts))
-        if cached is not None:
-            return cached
-
-        rs = rings(feature)
-        others = [n for n in self._names if n != name]
-        xmin, ymin, xmax, ymax = self._bounds(feature, name)
-
-        def claimed_elsewhere(label):
-            return any(label.startswith(o) for o in others)
-
-        def inside(pt):
-            if not (xmin <= pt[0] <= xmax and ymin <= pt[1] <= ymax):
-                return False
-            return (any(in_ring(pt, r) for r in rs)
-                    or dist_to_rings(pt, rs) < NEAR_M)
-
-        found = []
-        for e in self.entryways:
-            props = e["properties"]
-            label = props.get("entrance_name") or "entrance"
-            pt = e["geometry"]["coordinates"]
-            if label.startswith(name) or (inside(pt) and not claimed_elsewhere(label)):
-                found.append({"point": pt, "label": label, "kind": "entrance"})
-        # A lift into a car park is a doorway like any other — but only the
-        # smarter search is allowed to notice, since no signage points at it.
-        for e in self.elevators if lifts else ():
-            label = e["properties"].get("description") or "lift"
-            pt = e["geometry"]["coordinates"]
-            if label.startswith(name) or (inside(pt) and not claimed_elsewhere(label)):
-                found.append({"point": pt, "label": label, "kind": "lift"})
-
+        found = [d for d in self._assign().get(name, [])
+                 if lifts or d["kind"] != "lift"]
         if not found:
-            found = [{"point": centroid(feature), "kind": "centre",
-                      "label": name + " (building centre)"}]
-        self._doors[(name, lifts)] = found
+            return [{"point": centroid(feature), "kind": "centre",
+                     "label": name + " (building centre)"}]
         return found
