@@ -96,7 +96,7 @@ def get(url, origin=None, timeout=20):
         return response.status, response.headers, response.read()
 
 
-def check_api(api, web):
+def check_api(api, web, admin_password=None):
     print("\napi  %s" % api)
     base = api.rstrip("/")
     try:
@@ -145,6 +145,45 @@ def check_api(api, web):
     except Exception as exc:
         check("places are searchable", False, str(exc)[:100])
 
+    # The check this file did not have when it was needed. On serverless the
+    # database can be per-instance, so a session written while logging in is
+    # invisible to whichever instance handles the next request, and the admin
+    # console fails with "Invalid session" partway through a workflow. One
+    # request cannot see that: the failure only appears once a later call lands
+    # somewhere else, so this logs in once and then reuses the token several
+    # times, which is what the console itself does.
+    if admin_password:
+        try:
+            payload = json.dumps({"password": admin_password}).encode()
+            request = urllib.request.Request(base + "/api/admin/login", data=payload,
+                                             headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                token = json.loads(response.read())["token"]
+        except urllib.error.HTTPError as exc:
+            check("admin can log in", False,
+                  "HTTP %d — is ADMIN_PASSWORD what you passed?" % exc.code)
+            token = None
+        except Exception as exc:
+            check("admin can log in", False, str(exc)[:100])
+            token = None
+        if token:
+            check("admin can log in", True)
+            codes = []
+            for _ in range(6):
+                try:
+                    request = urllib.request.Request(base + "/api/admin/submissions")
+                    request.add_header("Authorization", "Bearer " + token)
+                    with urllib.request.urlopen(request, timeout=20) as response:
+                        codes.append(response.status)
+                except urllib.error.HTTPError as exc:
+                    codes.append(exc.code)
+                except Exception:
+                    codes.append(0)
+            survived = all(code == 200 for code in codes)
+            check("the session survives across requests", survived,
+                  "%s — a 401 here means the session store is per-instance; "
+                  "point DATABASE_URL at a shared database" % codes)
+
 
 def check_web(web):
     print("\nweb  %s" % web)
@@ -184,11 +223,12 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--api", help="deployed API base URL")
     ap.add_argument("--web", help="deployed frontend base URL")
+    ap.add_argument("--admin-password", help="enables the admin session check")
     args = ap.parse_args()
 
     check_repo()
     if args.api:
-        check_api(args.api, args.web)
+        check_api(args.api, args.web, args.admin_password)
     if args.web:
         check_web(args.web)
 

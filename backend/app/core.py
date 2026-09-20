@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 
@@ -15,7 +17,27 @@ ROOT = Path(__file__).resolve().parents[2]
 VERIFIED_PATH_ID = "e-robot-verified"
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", Path(__file__).resolve().parents[1] / "uploads"))
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parents[1] / 'unmapped.db'}")
+
+
+def _normalise_database_url(url: str) -> str:
+    """Accept whichever spelling the host hands out.
+
+    Neon, Vercel and Heroku all print postgres:// URLs. SQLAlchemy 2 only
+    recognises postgresql://, and the driver pinned for deployment is psycopg 3,
+    which is selected by the +psycopg suffix rather than by being installed.
+    Normalising here means DATABASE_URL can be pasted from any dashboard
+    unedited, which is the form people actually copy.
+    """
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+DATABASE_URL = _normalise_database_url(
+    os.getenv("DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parents[1] / 'unmapped.db'}")
+)
 
 
 def utcnow() -> datetime:
@@ -177,8 +199,15 @@ class AdminSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    # A serverless instance is frozen between requests, so a pooled connection is
+    # a connection held open against a database that caps them — and one the
+    # provider may have dropped while the instance slept. NullPool opens a
+    # connection per checkout and closes it after, which is what a hosted
+    # pooler expects to see.
+    engine = create_engine(DATABASE_URL, poolclass=NullPool)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
@@ -268,7 +297,14 @@ def initialize_database() -> None:
     Base.metadata.create_all(engine)
     ensure_schema()
     with SessionLocal() as db:
-        seed_database(db)
+        try:
+            seed_database(db)
+        except IntegrityError:
+            # Against a shared database two cold starts can look at the same
+            # empty tables at the same moment and both decide to fill them. The
+            # loser collides on rows the winner already wrote, which is the
+            # desired end state reached by the other route.
+            db.rollback()
 
 
 def new_tracking_code() -> str:

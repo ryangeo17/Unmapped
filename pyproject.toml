@@ -13,6 +13,8 @@ dependencies = [
   "pydantic==2.11.7",
   "python-multipart==0.0.20",
   "python-dotenv==1.1.1",
+  # Only used when DATABASE_URL points at Postgres; harmless otherwise.
+  "psycopg[binary]==3.2.3",
 ]
 
 # Name the entrypoint rather than relying on filename detection, so adding a
