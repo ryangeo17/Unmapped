@@ -184,6 +184,52 @@ def _direction(start: GraphNode, end: GraphNode) -> str:
     return "north" if dy > 0 else "south"
 
 
+def _cautions(edge: GraphEdge, nighttime: bool) -> list[str]:
+    out = []
+    if edge.stairs:
+        out.append("stairs")
+    if edge.curb:
+        out.append("unlowered curb")
+    if edge.roughness is not None and edge.roughness >= 0.4:
+        out.append("rough surface")
+    if nighttime and edge.lit is False:
+        out.append("unlit at night")
+    if edge.grade == "NonCompliant":
+        out.append("may have travel hazards")
+    if edge.kind == "shortcut":
+        out.append("crosses open lawn")
+    return out
+
+
+def _instruction(step: dict) -> str:
+    """Name the thing you are walking along, never the node you are walking to.
+
+    Node ids are derived from coordinates now, so the old "toward {node.name}"
+    read as "toward n-7662088_3932650".
+    """
+    heading = _direction(step["_from"], step["_to"])
+    name = step["name"]
+    kind = step["kind"]
+    if kind == "shortcut":
+        return f"Cut {heading} across {name}" if name else f"Cut {heading} across the lawn"
+    if kind == "stairs":
+        risers = step["risers"]
+        steps_text = f" ({risers} steps)" if risers else ""
+        return f"Take the steps {heading}{steps_text}"
+    if kind == "ramp":
+        return f"Follow the ramp {heading}"
+    if kind == "indoor":
+        return f"Go {heading} through {name}" if name else f"Continue {heading} indoors"
+    if name:
+        # Generic words read better lowercased after "the"; proper names — the
+        # San Martin Bridge, the Breezeway — must keep their capitals.
+        generic = name in {"Hallway", "Sidewalk", "Crosswalk", "Curb", "Ramp",
+                           "Stairs", "Curb Ramp", "Escalator", "Elevator",
+                           "Wheelchair Lift", "Temporary Pathway"}
+        return f"Head {heading} along the {name.lower() if generic else name}"
+    return f"Head {heading}"
+
+
 def compute_route(
     db: Session,
     start_value: str,
@@ -301,32 +347,43 @@ def compute_route(
     )
     accessibility_score = max(0.0, round(100 - stairs * 35 - rough_m / max(distance_m, 1) * 30, 1))
 
+    # One step per edge was fine for a hand-made eight-node graph. Over the
+    # real survey a 648 m walk is 77 edges averaging 8 m, which is a list
+    # nobody can follow, so consecutive edges of the same character and name
+    # collapse into one instruction.
     steps = []
-    for index, (origin, arc) in enumerate(arcs, 1):
+    for origin, arc in arcs:
+        edge = arc.edge
         source_node, target_node = nodes[origin], nodes[arc.target]
-        cautions = []
-        if arc.edge.stairs:
-            cautions.append("stairs")
-        if arc.edge.curb:
-            cautions.append("unlowered curb")
-        if arc.edge.roughness is not None and arc.edge.roughness >= 0.4:
-            cautions.append("rough surface")
-        if nighttime and arc.edge.lit is False:
-            cautions.append("unlit at night")
-        if arc.edge.grade == "NonCompliant":
-            cautions.append("may have travel hazards")
-        if arc.edge.kind == "shortcut":
-            cautions.append("crosses open lawn")
-        steps.append(
-            {
-                "index": index,
-                "instruction": f"Head {_direction(source_node, target_node)} toward {target_node.name}",
-                "distance_m": arc.edge.distance_m,
-                "edge_id": arc.edge.id,
-                "surface": arc.edge.surface,
-                "cautions": cautions,
+        character = (edge.kind, edge.name)
+        if steps and steps[-1]["_character"] == character:
+            step = steps[-1]
+        else:
+            step = {
+                "_character": character,
+                "_from": source_node,
+                "index": len(steps) + 1,
+                "distance_m": 0.0,
+                "edge_id": edge.id,
+                "surface": edge.surface,
+                "kind": edge.kind,
+                "name": edge.name,
+                "risers": 0,
+                "cautions": [],
             }
-        )
+            steps.append(step)
+        step["distance_m"] += edge.distance_m
+        step["_to"] = target_node
+        if edge.stairs:
+            step["risers"] += edge.riser_count or 0
+        for caution in _cautions(edge, nighttime):
+            if caution not in step["cautions"]:
+                step["cautions"].append(caution)
+
+    for step in steps:
+        step["instruction"] = _instruction(step)
+        step["distance_m"] = round(step["distance_m"], 1)
+        del step["_character"], step["_from"], step["_to"]
 
     start_door, end_door = start_by_node.get(start), end_by_node.get(end)
     explanations = [f"Optimized centralized {mode} costs for {'night' if nighttime else 'day'} travel."]

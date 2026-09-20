@@ -92,8 +92,12 @@ class GraphEdge(Base):
     # paved / stairs / ramp / indoor / shortcut. Shortcuts are lawn desire
     # paths inferred from geometry, so they are opt-in and walking-only.
     kind: Mapped[str] = mapped_column(String(20), default="paved", index=True)
-    # Which lawn a shortcut crosses, so the route can name it.
+    # Which lawn a shortcut crosses, or which project closed the segment, so
+    # the route can name it.
     space: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # The segment's own name where the survey has one — "Gilman Hall Tunnel",
+    # "Crosswalk", "Breezeway". Directions read from this, not from node ids.
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.55)

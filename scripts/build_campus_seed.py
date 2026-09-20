@@ -119,6 +119,10 @@ def build_edges(pathways, barriers):
         grade = props.get("ihcd2021routesurveycode")
         stairs = props.get("pathway_type") == 2
         kind = edge_kind(props)
+        # directions_name_text is on 91 segments, suffix_type on about 175.
+        # Between them most named features — tunnels, crosswalks, breezeways —
+        # can be spoken aloud instead of a node id.
+        name = props.get("directions_name_text") or props.get("suffix_type")
         for line in lines(feature):
             # walktime is per feature; split it over the feature's own segments
             # by length share, measuring between snapped nodes so the reported
@@ -153,6 +157,7 @@ def build_edges(pathways, barriers):
                     "grade": grade,
                     "riser_count": props.get("riser_count") or 0,
                     "kind": kind,
+                    "name": name,
                     "verified": False,
                     "confidence": CONFIDENCE.get(grade, 0.5),
                     "surface": None,
@@ -183,7 +188,7 @@ def build_shortcuts(pathways, exterior, facilities, barriers, known_nodes):
             "stairs": False, "curb": False,
             "closed": False, "construction": False, "bidirectional": True,
             "grade": None, "riser_count": 0, "kind": "shortcut",
-            "space": space,
+            "space": space, "name": space,
             # Not an unmeasured attribute — a desire path over a lawn is grass
             # by construction, and it walks slower than pavement.
             "surface": "grass",
