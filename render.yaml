@@ -7,8 +7,12 @@ services:
     envVars:
       - key: ADMIN_PASSWORD
         generateValue: true
+      # Must list the exact frontend origins, scheme and all, or every API
+      # call is blocked by CORS the moment the site goes up. Vercel gives you
+      # both a production domain and a per-deploy preview domain; include the
+      # ones you actually use. No trailing slash.
       - key: CORS_ORIGINS
-        value: https://unmapped.example.com
+        sync: false
       - key: COOKIE_SECURE
         value: "true"
       - key: DATABASE_URL

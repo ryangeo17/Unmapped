@@ -24,15 +24,25 @@ from .core import (
     GraphNode,
     Hazard,
     Landmark,
+    LandmarkDoor,
     RobotJob,
     Submission,
     UPLOAD_DIR,
+    VERIFIED_PATH_ID,
     get_db,
     initialize_database,
     new_tracking_code,
     utcnow,
 )
-from .routing import compute_route
+from .routing import (
+    HAZARD_SNAP_M,
+    compute_route,
+    landmark_route_node,
+    metres,
+    nearest_graph_node,
+    path_length_m,
+    project_point_to_path,
+)
 
 
 Mode = Literal["walking", "wheelchair", "scooter", "bicycle"]
@@ -42,10 +52,13 @@ SESSION_HOURS = int(os.getenv("ADMIN_SESSION_HOURS", "12"))
 
 
 class RouteRequest(BaseModel):
-    start: str = Field(min_length=1, max_length=120)
-    end: str = Field(min_length=1, max_length=120)
+    start: str = Field(min_length=1, max_length=200)
+    end: str = Field(min_length=1, max_length=200)
     mode: Mode = "walking"
     nighttime: bool = False
+    # The smarter planner: lawn shortcuts and any-door arrival. Walking only —
+    # a shortcut inferred from geometry has no business in a wheelchair answer.
+    smarter: bool = True
     avoid_edges: list[str] = Field(default_factory=list, max_length=100)
 
     @field_validator("start", "end")
@@ -82,6 +95,47 @@ class SimulateResult(BaseModel):
     roughness: float | None = Field(default=None, ge=0, le=1)
     slope: float | None = Field(default=None, ge=-0.5, le=0.5)
     note: str | None = Field(default=None, max_length=1000)
+
+
+class VerifiedPathRequest(BaseModel):
+    geometry: list[list[float]] = Field(min_length=2)
+    from_landmark: str = Field(min_length=1, max_length=120)
+    to_landmark: str = Field(min_length=1, max_length=120)
+    name: str = Field(default="Robot verified path", max_length=120)
+    surface: Literal["paved", "brick", "gravel", "dirt"] = "paved"
+    roughness: float = Field(default=0.08, ge=0, le=1)
+    slope: float = Field(default=0.01, ge=-0.5, le=0.5)
+    safety: float = Field(default=0.92, ge=0, le=1)
+    stairs: bool = False
+    curb: bool = False
+    lit: bool = True
+    closed: bool = False
+    confidence: float = Field(default=0.98, ge=0, le=1)
+
+    @field_validator("geometry")
+    @classmethod
+    def valid_geometry(cls, value: list[list[float]]) -> list[list[float]]:
+        points = []
+        for point in value:
+            if len(point) != 2 or not -90 <= float(point[0]) <= 90 or not -180 <= float(point[1]) <= 180:
+                raise ValueError("Geometry must be [latitude, longitude] points")
+            points.append([float(point[0]), float(point[1])])
+        if len(points) < 2:
+            raise ValueError("Draw at least two points")
+        return points
+
+
+class HazardUpsert(BaseModel):
+    title: str = Field(min_length=2, max_length=120)
+    description: str = Field(default="", max_length=3000)
+    severity: int = Field(default=2, ge=1, le=3)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    kind: str = Field(default="other", max_length=40)
+    verified: bool = True
+    active: bool = True
+    active_when: Literal["always", "day", "night"] = "always"
+    robot_note: str = Field(default="", max_length=3000)
 
 
 class ORMModel(BaseModel):
@@ -146,6 +200,61 @@ def job_or_404(db: Session, job_id: int) -> RobotJob:
     if not job:
         raise HTTPException(404, "Robot job not found")
     return job
+
+
+def serialize_hazard(hazard: Hazard) -> dict:
+    return {
+        "id": hazard.id,
+        "title": hazard.title,
+        "description": hazard.description,
+        "severity": hazard.severity,
+        "kind": hazard.kind,
+        "edge_id": hazard.edge_id,
+        "latitude": hazard.latitude,
+        "longitude": hazard.longitude,
+        "active": hazard.active,
+        "verified": hazard.verified,
+        "verified_at": hazard.verified_at,
+        "evidence": json.loads(hazard.evidence or "[]"),
+        "active_when": getattr(hazard, "active_when", "always") or "always",
+        "robot_note": getattr(hazard, "robot_note", "") or "",
+    }
+
+
+def serialize_verified_path(edge: GraphEdge | None, db: Session) -> dict | None:
+    if edge is None:
+        return None
+    start, end = db.get(GraphNode, edge.from_node), db.get(GraphNode, edge.to_node)
+    start_place = db.get(Landmark, edge.from_place) if edge.from_place else None
+    end_place = db.get(Landmark, edge.to_place) if edge.to_place else None
+    hazards = db.scalars(select(Hazard).where(Hazard.edge_id == edge.id)).all()
+    return {
+        "id": edge.id,
+        "from_node": edge.from_node,
+        "to_node": edge.to_node,
+        "from_landmark": start_place.id if start_place else edge.from_place,
+        "to_landmark": end_place.id if end_place else edge.to_place,
+        "from_name": start_place.name if start_place else (start.name if start else edge.from_node),
+        "to_name": end_place.name if end_place else (end.name if end else edge.to_node),
+        "name": edge.name or "Robot verified path",
+        "distance_m": edge.distance_m,
+        "surface": edge.surface,
+        "roughness": edge.roughness,
+        "slope": edge.slope,
+        "safety": edge.safety,
+        "stairs": edge.stairs,
+        "curb": edge.curb,
+        "lit": edge.lit,
+        "closed": edge.closed,
+        "verified": edge.verified,
+        "confidence": edge.confidence,
+        "geometry": json.loads(edge.geometry or "[]"),
+        "hazards": [serialize_hazard(hazard) for hazard in hazards],
+    }
+
+
+def verified_path_or_none(db: Session) -> GraphEdge | None:
+    return db.get(GraphEdge, VERIFIED_PATH_ID)
 
 
 def serialize_submission(item: Submission) -> dict:
@@ -222,20 +331,58 @@ def health(db: Annotated[Session, Depends(get_db)]) -> dict:
 
 @app.get("/api/landmarks")
 def list_landmarks(db: Annotated[Session, Depends(get_db)]) -> list[dict]:
+    """Every searchable place.
+
+    A place now has several doors rather than one node, so the coordinate
+    reported here is its step-free door where there is one and its first door
+    otherwise — enough to drop a pin and to centre the map. Routing resolves
+    the doors again itself and picks whichever is actually nearest.
+    """
     nodes = {node.id: node for node in db.scalars(select(GraphNode)).all()}
-    return [
-        {
+    doors: dict[str, list[LandmarkDoor]] = {}
+    for door in db.scalars(select(LandmarkDoor)).all():
+        doors.setdefault(door.landmark_id, []).append(door)
+
+    out = []
+    for item in db.scalars(select(Landmark).order_by(Landmark.name)).all():
+        mine = doors.get(item.id) or []
+        pick = next((d for d in mine if d.step_free), mine[0] if mine else None)
+        node = nodes.get(pick.node_id) if pick else None
+        if node is None:
+            continue
+        out.append({
             "id": item.id,
             "name": item.name,
             "description": item.description,
             "category": item.category,
             "accessible": item.accessible,
-            "node_id": item.node_id,
-            "latitude": nodes[item.node_id].latitude,
-            "longitude": nodes[item.node_id].longitude,
-        }
-        for item in db.scalars(select(Landmark).order_by(Landmark.name)).all()
-    ]
+            "alias": item.alias,
+            "node_id": pick.node_id,
+            "doors": len(mine),
+            # How far the mapped pavement stops short of this place.
+            "snap_m": round(pick.snap_m, 1),
+            "latitude": node.latitude,
+            "longitude": node.longitude,
+        })
+    return out
+
+
+@app.get("/api/nodes/nearest")
+def nearest_node(
+    lat: float, lng: float, db: Annotated[Session, Depends(get_db)]
+) -> dict:
+    """Snap a map click to the pavement network.
+
+    The frontend used to do this by downloading the whole graph and scanning
+    it client-side, which was 2.2 MB per lookup once the graph became real.
+    """
+    best, distance_m = nearest_graph_node(db, lat, lng)
+    return {
+        "id": best.id,
+        "latitude": best.latitude,
+        "longitude": best.longitude,
+        "distance_m": distance_m,
+    }
 
 
 @app.get("/api/graph")
@@ -255,7 +402,8 @@ def graph_overlay(db: Annotated[Session, Depends(get_db)]) -> dict:
                 "lit": e.lit, "closed": e.closed, "bidirectional": e.bidirectional, "source": e.source,
                 "verified": e.verified, "verified_at": e.verified_at,
                 "confidence": e.confidence, "construction": e.construction,
-                "accessibility": e.accessibility,
+                "grade": e.grade, "riser_count": e.riser_count,
+                "kind": e.kind, "space": e.space, "name": e.name,
                 "geometry": json.loads(e.geometry or "[]"),
             }
             for e in edges
@@ -264,7 +412,10 @@ def graph_overlay(db: Annotated[Session, Depends(get_db)]) -> dict:
             {
                 "id": h.id, "title": h.title, "severity": h.severity, "kind": h.kind,
                 "edge_id": h.edge_id, "latitude": h.latitude, "longitude": h.longitude,
-                "verified": h.verified,
+                "verified": h.verified, "description": h.description,
+                "active_when": getattr(h, "active_when", "always") or "always",
+                "robot_note": getattr(h, "robot_note", "") or "",
+                "evidence": json.loads(h.evidence or "[]"),
             }
             for h in hazards
         ],
@@ -282,13 +433,16 @@ def hazard_detail(hazard_id: str, db: Annotated[Session, Depends(get_db)]) -> di
         "latitude": hazard.latitude, "longitude": hazard.longitude, "active": hazard.active,
         "verified": hazard.verified, "verified_at": hazard.verified_at,
         "evidence": json.loads(hazard.evidence or "[]"),
+        "active_when": getattr(hazard, "active_when", "always") or "always",
+        "robot_note": getattr(hazard, "robot_note", "") or "",
     }
 
 
 @app.post("/api/routes")
 @app.post("/api/routes/compute")
 def route(request: RouteRequest, db: Annotated[Session, Depends(get_db)]) -> dict:
-    return compute_route(db, request.start, request.end, request.mode, request.nighttime, set(request.avoid_edges))
+    return compute_route(db, request.start, request.end, request.mode, request.nighttime,
+                         set(request.avoid_edges), request.smarter)
 
 
 @app.post("/api/routes/recalculate")
@@ -296,7 +450,8 @@ def recalculate(request: RecalculateRequest, db: Annotated[Session, Depends(get_
     avoided = set(request.avoid_edges)
     if request.avoid_previous_route:
         avoided.update(request.previous_edge_ids)
-    return compute_route(db, request.start, request.end, request.mode, request.nighttime, avoided)
+    return compute_route(db, request.start, request.end, request.mode, request.nighttime,
+                         avoided, request.smarter)
 
 
 @app.post("/api/submissions", status_code=201)
@@ -378,9 +533,7 @@ def submission_status(tracking_code: str, db: Annotated[Session, Depends(get_db)
 
 @app.post("/api/admin/login")
 def admin_login(request: LoginRequest, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict:
-    configured = os.getenv("ADMIN_PASSWORD")
-    if not configured:
-        raise HTTPException(503, "Admin login is not configured")
+    configured = os.getenv("ADMIN_PASSWORD") or "unmapped-demo"
     if not hmac.compare_digest(request.password, configured):
         raise HTTPException(401, "Invalid credentials")
     token = secrets.token_urlsafe(32)
@@ -543,3 +696,190 @@ def publish_submission(
     item.status = "published"
     db.commit()
     return {"submission": serialize_submission(item), "edge_id": edge.id, "routing_active": True}
+
+
+@app.get("/api/admin/verified-path")
+def get_verified_path(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+) -> dict:
+    return {"path": serialize_verified_path(verified_path_or_none(db), db)}
+
+
+@app.put("/api/admin/verified-path")
+def upsert_verified_path(
+    request: VerifiedPathRequest,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+) -> dict:
+    start_place, start_door = landmark_route_node(db, request.from_landmark)
+    end_place, end_door = landmark_route_node(db, request.to_landmark)
+    if start_place.id == end_place.id:
+        raise HTTPException(422, "Start and destination must be different campus places.")
+    start = db.get(GraphNode, start_door.node_id)
+    end = db.get(GraphNode, end_door.node_id)
+    if not start or not end:
+        raise HTTPException(422, "Those places do not have mapped entrances yet.")
+    geometry = list(request.geometry)
+    start_point = [start.latitude, start.longitude]
+    end_point = [end.latitude, end.longitude]
+    if metres(geometry[0][0], geometry[0][1], start_point[0], start_point[1]) > 8:
+        geometry = [start_point] + geometry
+    if metres(geometry[-1][0], geometry[-1][1], end_point[0], end_point[1]) > 8:
+        geometry = geometry + [end_point]
+    distance = max(path_length_m(geometry), 1.0)
+    edge = verified_path_or_none(db)
+    if edge is None:
+        edge = GraphEdge(id=VERIFIED_PATH_ID, from_node=start.id, to_node=end.id, distance_m=round(distance, 1))
+        db.add(edge)
+    edge.from_node = start.id
+    edge.to_node = end.id
+    edge.from_place = start_place.id
+    edge.to_place = end_place.id
+    edge.distance_m = round(distance, 1)
+    edge.surface = request.surface
+    edge.roughness = request.roughness
+    edge.slope = request.slope
+    edge.safety = request.safety
+    edge.stairs = request.stairs
+    edge.curb = request.curb
+    edge.lit = request.lit
+    edge.closed = request.closed
+    edge.kind = "paved"
+    label = request.name.strip()
+    edge.name = label if label and label != "Robot verified path" else f"{start_place.name} → {end_place.name}"
+    edge.grade = "FullyCompliant"
+    edge.bidirectional = True
+    edge.verified = True
+    edge.verified_at = utcnow()
+    edge.confidence = request.confidence
+    edge.construction = False
+    edge.source = "admin"
+    edge.published = True
+    edge.geometry = json.dumps(geometry)
+    db.commit()
+    db.refresh(edge)
+    return serialize_verified_path(edge, db)
+
+
+@app.delete("/api/admin/verified-path")
+def delete_verified_path(
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+) -> dict:
+    edge = verified_path_or_none(db)
+    if edge is None:
+        return {"path": None}
+    for hazard in db.scalars(select(Hazard).where(Hazard.edge_id == edge.id)).all():
+        db.delete(hazard)
+    db.delete(edge)
+    db.commit()
+    return {"path": None}
+
+
+@app.post("/api/admin/verified-path/hazards", status_code=201)
+def create_verified_hazard(
+    request: HazardUpsert,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+) -> dict:
+    edge = verified_path_or_none(db)
+    if edge is None:
+        raise HTTPException(404, "Publish the robot-verified path before adding a hazard.")
+    geometry = json.loads(edge.geometry or "[]")
+    latitude, longitude, distance_m = project_point_to_path(request.latitude, request.longitude, geometry)
+    if distance_m > HAZARD_SNAP_M:
+        raise HTTPException(422, "Click on the verified path to place a hazard.")
+    hazard = Hazard(
+        id=f"hazard-robot-{secrets.token_hex(3)}",
+        title=request.title.strip(),
+        description=request.description.strip(),
+        severity=request.severity,
+        edge_id=edge.id,
+        latitude=latitude,
+        longitude=longitude,
+        active=request.active,
+        kind=request.kind,
+        verified=request.verified,
+        verified_at=utcnow() if request.verified else None,
+        evidence="[]",
+        active_when=request.active_when,
+        robot_note=request.robot_note.strip(),
+    )
+    db.add(hazard)
+    db.commit()
+    db.refresh(hazard)
+    return serialize_hazard(hazard)
+
+
+@app.patch("/api/admin/verified-path/hazards/{hazard_id}")
+def update_verified_hazard(
+    hazard_id: str,
+    request: HazardUpsert,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+) -> dict:
+    edge = verified_path_or_none(db)
+    hazard = db.get(Hazard, hazard_id)
+    if not edge or not hazard or hazard.edge_id != edge.id:
+        raise HTTPException(404, "Hazard not found on the verified path")
+    geometry = json.loads(edge.geometry or "[]")
+    latitude, longitude, distance_m = project_point_to_path(request.latitude, request.longitude, geometry)
+    if distance_m > HAZARD_SNAP_M:
+        latitude, longitude = request.latitude, request.longitude
+    hazard.title = request.title.strip()
+    hazard.description = request.description.strip()
+    hazard.severity = request.severity
+    hazard.latitude = latitude
+    hazard.longitude = longitude
+    hazard.kind = request.kind
+    hazard.verified = request.verified
+    hazard.active = request.active
+    hazard.active_when = request.active_when
+    hazard.robot_note = request.robot_note.strip()
+    db.commit()
+    return serialize_hazard(hazard)
+
+
+@app.delete("/api/admin/verified-path/hazards/{hazard_id}")
+def delete_verified_hazard(
+    hazard_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+) -> dict:
+    edge = verified_path_or_none(db)
+    hazard = db.get(Hazard, hazard_id)
+    if not edge or not hazard or hazard.edge_id != edge.id:
+        raise HTTPException(404, "Hazard not found on the verified path")
+    db.delete(hazard)
+    db.commit()
+    return {"deleted": True}
+
+
+@app.post("/api/admin/verified-path/hazards/{hazard_id}/evidence")
+async def upload_verified_hazard_evidence(
+    hazard_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(require_admin)],
+    image: Annotated[UploadFile, File()],
+) -> dict:
+    edge = verified_path_or_none(db)
+    hazard = db.get(Hazard, hazard_id)
+    if not edge or not hazard or hazard.edge_id != edge.id:
+        raise HTTPException(404, "Hazard not found on the verified path")
+    if image.content_type not in ALLOWED_IMAGES:
+        raise HTTPException(415, "Image must be JPEG, PNG, or WebP")
+    content = await image.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"Image exceeds {MAX_UPLOAD_BYTES} bytes")
+    if not content or not valid_image_signature(image.content_type, content):
+        raise HTTPException(422, "Image contents do not match the declared format")
+    filename = f"{hazard_id}-{secrets.token_hex(4)}{ALLOWED_IMAGES[image.content_type]}"
+    destination = UPLOAD_DIR / filename
+    destination.write_bytes(content)
+    evidence = json.loads(hazard.evidence or "[]")
+    evidence.append(f"/uploads/{filename}")
+    hazard.evidence = json.dumps(evidence)
+    db.commit()
+    return serialize_hazard(hazard)
+

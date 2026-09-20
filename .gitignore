@@ -1,5 +1,5 @@
 .DS_Store
-.env
+# .env is committed so Vercel can build with the public Mapbox token
 *.db
 *.sqlite
 *.sqlite3
@@ -18,3 +18,5 @@ uploads/*
 !uploads/.gitkeep
 backend/uploads/*
 !backend/uploads/.gitkeep
+graph_cache.json
+indoors_out/

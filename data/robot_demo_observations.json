@@ -1,0 +1,70 @@
+{
+  "_comment": [
+    "Hand-authored demo robot observations. Everything in this file is synthetic:",
+    "no robot has driven Homewood yet. It exists so the verification pipeline has",
+    "something to show — hazard markers, evidence photos, 'Avoid this obstacle',",
+    "the approaching-hazard alert, and a non-zero verified percentage.",
+    "",
+    "Each observation is placed by coordinate, and the seed builder snaps it onto",
+    "the nearest real pathway segment. That keeps it anchored to JHU's actual",
+    "network rather than to a parallel set of invented nodes, so deleting this",
+    "file degrades the demo without breaking routing.",
+    "",
+    "The measurements below are the only slope/roughness/surface/lighting values",
+    "anywhere in the graph. Every other segment leaves them null, because nobody",
+    "has measured them. Replace these with real runs as they come in."
+  ],
+  "observations": [
+    {
+      "id": "hazard-brick-roughness",
+      "title": "Uneven brick paving",
+      "description": "Several raised bricks can catch small wheels near Levering Hall.",
+      "severity": 2,
+      "kind": "roughness",
+      "latitude": 39.32952,
+      "longitude": -76.621,
+      "evidence": ["/evidence/crack-demo.svg"],
+      "measured": {
+        "surface": "brick",
+        "roughness": 0.55,
+        "slope": 0.02,
+        "safety": 0.78,
+        "lit": true
+      }
+    },
+    {
+      "id": "hazard-rec-lighting",
+      "title": "Limited nighttime lighting",
+      "description": "Lighting is sparse on the eastern recreation-center path.",
+      "severity": 2,
+      "kind": "lighting",
+      "latitude": 39.3291,
+      "longitude": -76.6202,
+      "evidence": ["/evidence/pothole-demo.svg"],
+      "measured": {
+        "surface": "paved",
+        "roughness": 0.12,
+        "slope": 0.01,
+        "safety": 0.58,
+        "lit": false
+      }
+    },
+    {
+      "id": "hazard-decker-step",
+      "title": "Unmarked step at the quad edge",
+      "description": "A single riser where the Decker Quad path meets the pavement, easy to miss at night.",
+      "severity": 3,
+      "kind": "obstacle",
+      "latitude": 39.32683,
+      "longitude": -76.62193,
+      "evidence": ["/evidence/crack-demo.svg"],
+      "measured": {
+        "surface": "paved",
+        "roughness": 0.3,
+        "slope": 0.03,
+        "safety": 0.7,
+        "lit": false
+      }
+    }
+  ]
+}

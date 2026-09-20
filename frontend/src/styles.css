@@ -152,10 +152,14 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .legend-line--route { border-color: var(--blue); }
 .legend-line--alt { border-color: #8295aa; border-top-style: dashed; }
 .legend-line--verified { border-color: #197247; }
-.legend-line--jhu-full { border-color: #0f766e; }
-.legend-line--jhu-partial { border-color: #c2410c; border-top-style: dashed; }
+/* These three match campusLayers.ts, which paints Pathways by JHU's own grade. */
+.legend-line--jhu-full { border-color: #16a34a; }
+.legend-line--jhu-partial { border-color: #eab308; }
+.legend-line--jhu-hazard { border-color: #dc2626; }
 .legend-line--unverified { border-color: #6b7280; border-top-style: dashed; }
 .legend-line--graph { border-color: #4b83c3; border-top-width: 2px; border-top-style: dotted; }
+.legend-dot--stepfree { background: #2563eb !important; border-color: #1e40af !important; }
+.legend-dot--entrance { background: #64748b !important; border-color: #475569 !important; }
 .legend-dot { width: 10px; height: 10px; background: #facc15; border: 2px solid #9a6b00; border-radius: 50%; }
 .legend-symbol { display: inline-grid; width: 17px; height: 17px; place-items: center; border-radius: 4px; background: #edf3f9; color: #35516f; font-style: normal; font-weight: 800; }
 .legend-symbol--closed { background: #fee2e2; color: #991b1b; }
@@ -191,6 +195,29 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .reference strong { letter-spacing: .08em; color: var(--navy); }
 
 .admin-page, .admin-login { min-height: 100vh; background: #f1f5f9; padding: 36px clamp(18px, 5vw, 72px); }
+.admin-page.admin-workspace { display: flex; flex-direction: column; min-height: 100vh; height: 100dvh; overflow: hidden; padding-bottom: 16px; }
+.admin-workspace-body { flex: 1; min-height: 0; max-width: 1280px; width: 100%; margin: 0 auto; display: grid; grid-template-columns: 380px 1fr; gap: 16px; }
+.admin-tools { overflow-y: auto; min-height: 0; }
+.admin-map-full { position: relative; z-index: 1; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #d7e2ee; }
+.admin-map-full .mapbox-shell, .admin-map-full .map { height: 100%; min-height: 420px; }
+.admin-steps { margin: 0 0 16px; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.admin-steps li { margin: 0 0 8px; }
+.admin-steps li.is-current { color: var(--navy); font-weight: 600; }
+.admin-tool-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 14px; }
+.admin-tool-toggle button { border: 1px solid var(--line); background: white; border-radius: 10px; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #617188; }
+.admin-tool-toggle button.selected { border-color: var(--blue); background: var(--pale); color: var(--blue); font-weight: 700; }
+.admin-help, .admin-form > p { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.admin-form { display: grid; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.admin-form label, .admin-tools > label { display: block; color: #455870; font-weight: 700; font-size: 12px; }
+.admin-form input, .admin-form select, .admin-form textarea, .admin-tools > label input, .admin-tools > label select { display: block; width: 100%; margin-top: 7px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; color: var(--navy); background: white; }
+.admin-queue { max-width: 1280px; width: 100%; margin: 16px auto 0; flex: 0 0 auto; max-height: 220px; overflow: auto; }
+.hazard-admin-list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
+.hazard-admin-list button { width: 100%; text-align: left; }
+.hazard-admin-list strong, .hazard-admin-list small { display: block; }
+.hazard-admin-list small { color: var(--muted); margin-top: 3px; }
+.hazard-popup-note { color: #1d3b63; font-size: 13px; line-height: 1.4; }
+.map-pin--vertex { width: 22px; height: 22px; border-radius: 50%; background: #7c3aed; color: white; font-size: 11px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 4px 10px rgba(76, 29, 149, .35); }
+.mapbox-hazard.is-selected { box-shadow: 0 0 0 4px rgba(20, 105, 210, .35); transform: scale(1.08); }
 .admin-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; max-width: 1280px; margin: 0 auto 27px; }
 .admin-header h1 { font-size: 30px; margin: 0; }
 .admin-stats { max-width: 1280px; margin: 0 auto 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -230,7 +257,7 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 
 @media (max-width: 780px) {
   .topbar { height: 62px; flex-basis: 62px; padding: 0 12px; }
-  .brand small, .overlay-button, .admin-link { display: none !important; }
+  .brand small { display: none !important; }
   .brand strong { font-size: 17px; }
   .brand-logo { width: 34px; height: 34px; }
   .mobile-menu { display: inline-grid !important; }
@@ -250,6 +277,9 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
   .map-instruction span { overflow: hidden; text-overflow: ellipsis; }
   .admin-header { align-items: flex-start; }
   .admin-grid { grid-template-columns: 1fr; }
+  .admin-workspace-body { grid-template-columns: 1fr; }
+  .admin-page.admin-workspace { height: auto; overflow: auto; }
+  .admin-map-full { min-height: 360px; }
   .admin-stats { grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
   .admin-stats > div { padding: 12px; }
   .admin-stats strong { font-size: 20px; }
@@ -271,3 +301,10 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Route arrival details: which door, which lawn, how many steps. */
+.route-doors { display: grid; gap: 6px; margin: 10px 0 0; font-size: 0.82rem; }
+.route-doors div { display: flex; gap: 10px; align-items: baseline; }
+.route-doors dt { flex: 0 0 62px; color: var(--muted); }
+.route-doors dd { margin: 0; color: #12243c; font-weight: 600; }
+.door-badge { margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: var(--pale); color: var(--blue-dark); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }

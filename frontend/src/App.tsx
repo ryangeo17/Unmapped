@@ -10,6 +10,7 @@ import {
   Footprints,
   Layers3,
   LocateFixed,
+  Map,
   MapPin,
   Menu,
   Moon,
@@ -117,6 +118,11 @@ function Stat({ label, value, Icon }: { label: string; value: string; Icon: type
   return <div className="result-stat"><Icon size={18} /><span><strong>{value}</strong><small>{label}</small></span></div>
 }
 
+// Lawn shortcuts and any-door arrival, walking only. Always on: it is what
+// makes the route a good one rather than a setting worth asking about. The
+// backend still takes the flag, so re-exposing it is a toggle away.
+const SMARTER_PLANNER = true
+
 function MainMapPage() {
   const [startText, setStartText] = useState('')
   const [destinationText, setDestinationText] = useState('')
@@ -128,6 +134,7 @@ function MainMapPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showGraph, setShowGraph] = useState(false)
+  const [showCampus, setShowCampus] = useState(false)
   const [panelOpen, setPanelOpen] = useState(true)
   const [avoidedHazards, setAvoidedHazards] = useState<string[]>([])
   const [suggestionOpen, setSuggestionOpen] = useState(false)
@@ -235,11 +242,14 @@ function MainMapPage() {
     setError('')
     try {
       const result = await api.calculateRoute({
-        start: start.id === 'current' ? start.coordinates : start.id,
-        destination: destination.id === 'current' ? destination.coordinates : destination.id,
+        start,
+        destination,
         mode,
         time,
-        avoidHazardIds: avoidIds,
+        smarter: SMARTER_PLANNER,
+        avoidEdgeIds: route?.hazards
+          .filter((hazard) => avoidIds.includes(hazard.id) && hazard.edgeId)
+          .map((hazard) => hazard.edgeId as string),
       })
       setRoute(result)
       setDemoProgress(0)
@@ -291,6 +301,7 @@ function MainMapPage() {
         <div className="brand"><span className="brand-logo"><RouteIcon size={22} /></span><span><strong>UnMapped</strong><small>Routes for every body</small></span></div>
         <div className="top-actions">
           <button className={`secondary-button overlay-button ${showGraph ? 'active' : ''}`} onClick={() => setShowGraph((show) => !show)} aria-pressed={showGraph}><Layers3 size={17} /> Graph</button>
+            <button className={`secondary-button overlay-button ${showCampus ? 'active' : ''}`} onClick={() => setShowCampus((show) => !show)} aria-pressed={showCampus} title="JHU survey: buildings, entrances, paving and stairs"><Map size={17} /> Campus</button>
           <button className="secondary-button" onClick={() => { setSuggestionOpen(true); setSuggestionDrawing(true); setSuggestionReference('') }}><Plus size={17} /> Suggest a route</button>
           <Link className="admin-link" to="/admin">Admin</Link>
         </div>
@@ -330,11 +341,38 @@ function MainMapPage() {
             {route && <section className="route-result" aria-live="polite">
               <div className="result-heading"><div><p className="eyebrow">Recommended route</p><h2>{distance} · {route.durationMinutes} min</h2></div><span className="verified-badge"><CheckCircle2 size={16} /> {route.verifiedPercent}% verified</span></div>
               <p className="route-reason"><Sparkles size={18} /> {route.explanation}</p>
+              {(route.startDoor || route.endDoor) && (
+                <dl className="route-doors">
+                  {route.startDoor && (
+                    <div><dt>Starts</dt><dd>{route.startDoor.label}</dd></div>
+                  )}
+                  {route.endDoor && (
+                    <div>
+                      <dt>Arrives</dt>
+                      <dd>
+                        {route.endDoor.label}
+                        {route.endDoor.kind === 'lift' && <span className="door-badge">lift</span>}
+                      </dd>
+                    </div>
+                  )}
+                  {route.shortcutMeters > 0 && (
+                    <div>
+                      <dt>Shortcut</dt>
+                      <dd>{Math.round(route.shortcutMeters)} m across {route.shortcutSpaces.join(', ')}</dd>
+                    </div>
+                  )}
+                  {route.riserCount > 0 && (
+                    <div><dt>Steps</dt><dd>{route.riserCount} risers</dd></div>
+                  )}
+                </dl>
+              )}
               <div className="stats-grid">
                 <Stat label="Distance" value={distance} Icon={RouteIcon} />
                 <Stat label="Estimated" value={`${route.durationMinutes} min`} Icon={Clock3} />
-                <Stat label="Accessible" value={`${route.accessibilityScore}/100`} Icon={Accessibility} />
-                <Stat label={`${time} safety`} value={`${route.safetyScore}/100`} Icon={ShieldCheck} />
+                <Stat label="JHU accessible" value={`${route.accessibilityScore}/100`} Icon={Accessibility} />
+                {/* Null until something surveys security coverage; "0/100"
+                    would read as dangerous rather than as unmeasured. */}
+                <Stat label={`${time} safety`} value={route.safetyScore === null ? 'Not surveyed' : `${route.safetyScore}/100`} Icon={ShieldCheck} />
               </div>
               {route.hazards.length > 0 && (
                 <div className="route-cautions">
@@ -367,19 +405,25 @@ function MainMapPage() {
         </aside>
 
         <div className="map-wrap">
-          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} nighttime={time === 'night'} navigationActive={navigating || demoRunning || demoProgress > 0} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
+          <MapView route={route} currentPosition={currentPosition} suggestionPoints={suggestionPoints} suggestionMode={suggestionDrawing && !suggestionReference} showGraph={showGraph} showCampus={showCampus} nighttime={time === 'night'} navigationActive={navigating || demoRunning || demoProgress > 0} avoidedHazards={avoidedHazards} onAvoidHazard={avoidHazard} onSuggestionPoint={(point) => setSuggestionPoints((points) => [...points, point])} />
           <div className="legend" aria-label="Map legend">
             <strong>Map key</strong>
             <span><i className="legend-line legend-line--route" /> Selected route</span>
             <span><i className="legend-line legend-line--verified" /> ✓ Robot verified</span>
-            <span><i className="legend-line legend-line--jhu-full" /> JHU fully accessible</span>
-            <span><i className="legend-line legend-line--jhu-partial" /> JHU partial</span>
-            <span><i className="legend-line legend-line--unverified" /> Unverified fallback</span>
+            <span><i className="legend-line legend-line--unverified" /> ? Unverified</span>
             <span><i className="legend-symbol">⇅</i> Stairs</span>
             <span><i className="legend-dot" /> Caution</span>
             <span><i className="legend-symbol legend-symbol--closed">×</i> Closure</span>
             <span><i className="legend-symbol legend-symbol--submission">+</i> User submission</span>
-            {showGraph && <span><i className="legend-line legend-line--graph" /> Routing graph</span>}
+            {showGraph && <>
+              <span><i className="legend-line legend-line--jhu-full" /> JHU fully accessible</span>
+              <span><i className="legend-line legend-line--jhu-partial" /> JHU partially accessible</span>
+              <span><i className="legend-line legend-line--jhu-hazard" /> JHU may have hazards</span>
+            </>}
+            {showCampus && <>
+              <span><i className="legend-dot legend-dot--stepfree" /> Step-free entrance</span>
+              <span><i className="legend-dot legend-dot--entrance" /> Entrance, not step-free</span>
+            </>}
           </div>
           {suggestionDrawing && !suggestionReference && <div className="map-instruction"><MapPin size={18} /><span><strong>Draw your better route</strong>Click 2+ points on the map · {suggestionPoints.length} added</span><button className="text-button" onClick={() => setSuggestionPoints((points) => points.slice(0, -1))} disabled={!suggestionPoints.length}>Undo</button><button className="text-button" onClick={() => setSuggestionOpen(true)}>Finish</button></div>}
         </div>

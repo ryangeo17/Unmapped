@@ -1,0 +1,289 @@
+[
+  {
+    "title": "Sites",
+    "path": [
+      "Sites"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Indoors/Sites/MapServer/24",
+    "status": "ok",
+    "featureCount": 1,
+    "labels": 0,
+    "fields": 13,
+    "serviceLayerName": "Sites",
+    "geometryType": "esriGeometryPolygon",
+    "spatialReference": {
+      "wkid": 102685,
+      "latestWkid": 2248,
+      "vcsWkid": 105703,
+      "latestVcsWkid": 6360,
+      "xyTolerance": 0.003280833333333333,
+      "zTolerance": 0.001,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "xyUnits": 3048.0060960121928,
+      "falseZ": -100000,
+      "zUnits": 10000,
+      "falseM": -100000,
+      "mUnits": 10000
+    },
+    "popupTitle": "Sites: {NAME}",
+    "file": "indoors_out/geojson/Sites.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": false
+  },
+  {
+    "title": "Facilities",
+    "path": [
+      "Facilities"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Facilities/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 100,
+    "labels": 1,
+    "fields": 22,
+    "serviceLayerName": "Facilities",
+    "geometryType": "esriGeometryPolygon",
+    "spatialReference": {
+      "falseM": -100000,
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 3048.006096012192,
+      "latestWkid": 2248,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000
+    },
+    "popupTitle": "{name}",
+    "file": "indoors_out/geojson/Facilities.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": true
+  },
+  {
+    "title": "Exterior Spaces",
+    "path": [
+      "Exterior Spaces"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Exterior_Spaces/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 16,
+    "labels": 1,
+    "fields": 22,
+    "serviceLayerName": "Exterior Spaces",
+    "geometryType": "esriGeometryPolygon",
+    "spatialReference": {
+      "falseM": -100000,
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 10000,
+      "latestWkid": 2248,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000
+    },
+    "popupTitle": "{name}",
+    "file": "indoors_out/geojson/Exterior_Spaces.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": true
+  },
+  {
+    "title": "Pathways",
+    "path": [
+      "Pathways"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Pathways/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 2146,
+    "labels": 0,
+    "fields": 30,
+    "serviceLayerName": "Pathways",
+    "geometryType": "esriGeometryPolyline",
+    "spatialReference": {
+      "falseM": -100000,
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 10000,
+      "latestWkid": 2248,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000
+    },
+    "popupTitle": "Pathway",
+    "file": "indoors_out/geojson/Pathways.geojson",
+    "definitionExpression": "pathdisplay IS NULL",
+    "visibleByDefault": true
+  },
+  {
+    "title": "Polygon Barriers",
+    "path": [
+      "Polygon Barriers"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Polygon_Barriers_view/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 7,
+    "labels": 0,
+    "fields": 6,
+    "serviceLayerName": "Polygon Barriers",
+    "geometryType": "esriGeometryPolygon",
+    "spatialReference": {
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 10000,
+      "latestWkid": 2248,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000,
+      "latestVcsWkid": 6360,
+      "falseM": -100000,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "vcsWkid": 105703
+    },
+    "popupTitle": "{project_name}",
+    "file": "indoors_out/geojson/Polygon_Barriers.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": true
+  },
+  {
+    "title": "Landmarks",
+    "path": [
+      "Landmarks"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Landmarks/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 22,
+    "labels": 0,
+    "fields": 9,
+    "serviceLayerName": "Landmarks",
+    "geometryType": "esriGeometryPoint",
+    "spatialReference": {
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 3048.006096012192,
+      "latestWkid": 2248,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000,
+      "latestVcsWkid": 6360,
+      "falseM": -100000,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "vcsWkid": 105703
+    },
+    "popupTitle": "{description}",
+    "file": "indoors_out/geojson/Landmarks.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": true
+  },
+  {
+    "title": "Elevators",
+    "path": [
+      "Elevators"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Homewood_Elevators/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 15,
+    "labels": 0,
+    "fields": 12,
+    "serviceLayerName": "Elevators",
+    "geometryType": "esriGeometryPoint",
+    "spatialReference": {
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 3048.006096012192,
+      "latestWkid": 2248,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000,
+      "latestVcsWkid": 6360,
+      "falseM": -100000,
+      "zTolerance": 0.003280833333333333,
+      "wkid": 102685,
+      "vcsWkid": 105703
+    },
+    "popupTitle": "{description}",
+    "file": "indoors_out/geojson/Elevators.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": true
+  },
+  {
+    "title": "Entryways-All",
+    "path": [
+      "Entryways-All"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Entryways/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 337,
+    "labels": 0,
+    "fields": 20,
+    "serviceLayerName": "Entryways",
+    "geometryType": "esriGeometryPoint",
+    "spatialReference": {
+      "falseM": -100000,
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 10000,
+      "latestWkid": 2248,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000
+    },
+    "popupTitle": "{entrance_name}",
+    "file": "indoors_out/geojson/Entryways-All.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": false
+  },
+  {
+    "title": "Entryways-Accessible",
+    "path": [
+      "Entryways-Accessible"
+    ],
+    "url": "https://map.jhu.edu/arcgis/rest/services/Hosted/Entryways/FeatureServer/0",
+    "status": "ok",
+    "featureCount": 337,
+    "labels": 0,
+    "fields": 20,
+    "serviceLayerName": "Entryways",
+    "geometryType": "esriGeometryPoint",
+    "spatialReference": {
+      "falseM": -100000,
+      "xyTolerance": 0.003280833333333333,
+      "mUnits": 10000,
+      "zUnits": 10000,
+      "latestWkid": 2248,
+      "zTolerance": 0.001,
+      "wkid": 102685,
+      "xyUnits": 3048.0060960121928,
+      "mTolerance": 0.001,
+      "falseX": -120561100,
+      "falseY": -95444400,
+      "falseZ": -100000
+    },
+    "popupTitle": "{entrance_name}",
+    "file": "indoors_out/geojson/Entryways-Accessible.geojson",
+    "definitionExpression": null,
+    "visibleByDefault": true
+  }
+]

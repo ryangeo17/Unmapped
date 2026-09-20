@@ -12,6 +12,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, rela
 
 
 ROOT = Path(__file__).resolve().parents[2]
+VERIFIED_PATH_ID = "e-robot-verified"
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", Path(__file__).resolve().parents[1] / "uploads"))
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{Path(__file__).resolve().parents[1] / 'unmapped.db'}")
@@ -30,9 +31,33 @@ class Landmark(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, default="")
-    node_id: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"))
     category: Mapped[str] = mapped_column(String(40), default="building")
     accessible: Mapped[bool] = mapped_column(Boolean, default=True)
+    # A second name the place is commonly searched by: "MSEL", or the wording
+    # an earlier seed used ("MSE Library" for Milton S. Eisenhower Library).
+    alias: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+
+
+class LandmarkDoor(Base):
+    """Where you can actually arrive at a place.
+
+    A building has several doors and which one is nearest decides the route,
+    so this replaces the old one-landmark-one-node link. San Martin Garage is
+    the case that forces it: the survey records no entrance for it at all, only
+    a lift, and aiming at the building centre instead walks you 169 m further
+    round the block.
+    """
+    __tablename__ = "landmark_doors"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    landmark_id: Mapped[str] = mapped_column(ForeignKey("landmarks.id"), index=True)
+    node_id: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"), index=True)
+    label: Mapped[str] = mapped_column(String(160), default="")
+    kind: Mapped[str] = mapped_column(String(20), default="entrance")
+    step_free: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Distance from the door to the pavement node it snaps to. Seven
+    # off-campus buildings are 165-338 m out; the route ends where the mapped
+    # network does, and says so.
+    snap_m: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class GraphNode(Base):
@@ -49,13 +74,37 @@ class GraphEdge(Base):
     from_node: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"), index=True)
     to_node: Mapped[str] = mapped_column(ForeignKey("graph_nodes.id"), index=True)
     distance_m: Mapped[float] = mapped_column(Float)
-    surface: Mapped[str] = mapped_column(String(30), default="paved")
-    roughness: Mapped[float] = mapped_column(Float, default=0)
-    slope: Mapped[float] = mapped_column(Float, default=0)
-    safety: Mapped[float] = mapped_column(Float, default=1)
+    # Null means nobody has measured it. Not "fine" — a default of 0 slope and
+    # 1.0 safety would make every unsurveyed segment look ideal, which is
+    # exactly the person this app exists for being misled. edge_cost() skips
+    # the term and compute_route() discloses the distance involved.
+    surface: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    roughness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    slope: Mapped[float | None] = mapped_column(Float, nullable=True)
+    safety: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     stairs: Mapped[bool] = mapped_column(Boolean, default=False)
     curb: Mapped[bool] = mapped_column(Boolean, default=False)
-    lit: Mapped[bool] = mapped_column(Boolean, default=True)
+    # From JHU's own accessibility survey: FullyCompliant, PartiallyCompliant
+    # or NonCompliant ("may have travel hazards"). The real substitute for the
+    # slope reading this data does not carry.
+    grade: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    riser_count: Mapped[int] = mapped_column(Integer, default=0)
+    # paved / stairs / ramp / indoor / shortcut. Shortcuts are lawn desire
+    # paths inferred from geometry, so they are opt-in and walking-only.
+    kind: Mapped[str] = mapped_column(String(20), default="paved", index=True)
+    # Which lawn a shortcut crosses, or which project closed the segment, so
+    # the route can name it.
+    space: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Searchable campus places an admin-drawn robot path connects.
+    from_place: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    to_place: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The segment's own name where the survey has one — "Gilman Hall Tunnel",
+    # "Crosswalk", "Breezeway". Directions read from this, not from node ids.
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Drawn polylines from admin/community traces. Routing still uses the
+    # snapped endpoints; this is what the map actually draws.
+    geometry: Mapped[str] = mapped_column(Text, default="[]")
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.55)
@@ -64,8 +113,6 @@ class GraphEdge(Base):
     bidirectional: Mapped[bool] = mapped_column(Boolean, default=True)
     source: Mapped[str] = mapped_column(String(30), default="seed")
     published: Mapped[bool] = mapped_column(Boolean, default=True)
-    accessibility: Mapped[str] = mapped_column(String(20), default="unknown")
-    geometry: Mapped[str] = mapped_column(Text, default="[]")
     submission_id: Mapped[int | None] = mapped_column(ForeignKey("submissions.id"), nullable=True)
 
 
@@ -83,6 +130,9 @@ class Hazard(Base):
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evidence: Mapped[str] = mapped_column(Text, default="[]")
+    # always | day | night — night-only lighting cautions stay off in daylight.
+    active_when: Mapped[str] = mapped_column(String(20), default="always")
+    robot_note: Mapped[str] = mapped_column(Text, default="")
 
 
 class Submission(Base):
@@ -137,56 +187,75 @@ def get_db() -> Generator[Session, None, None]:
         yield db
 
 
-def _load_json(name: str) -> list[dict]:
+def _load_json(name: str):
     with (DATA_DIR / name).open(encoding="utf-8") as file:
         return json.load(file)
 
 
-def _edge_record(item: dict) -> GraphEdge:
-    geometry = item.get("geometry")
-    return GraphEdge(
-        id=item["id"],
-        from_node=item["from_node"],
-        to_node=item["to_node"],
-        distance_m=item["distance_m"],
-        surface=item.get("surface", "paved"),
-        roughness=item.get("roughness", 0),
-        slope=item.get("slope", 0),
-        safety=item.get("safety", 1),
-        stairs=item.get("stairs", False),
-        curb=item.get("curb", False),
-        lit=item.get("lit", True),
-        verified=item.get("verified", False),
-        confidence=item.get("confidence", 0.55),
-        construction=item.get("construction", False),
-        closed=item.get("closed", False),
-        bidirectional=item.get("bidirectional", True),
-        source=item.get("source", "seed"),
-        published=True,
-        accessibility=item.get("accessibility", "unknown"),
-        geometry=geometry if isinstance(geometry, str) else json.dumps(geometry or []),
-    )
+def _columns(model) -> set[str]:
+    return {column.key for column in model.__table__.columns}
+
+
+def _rows(model, items):
+    """Keep only keys the table actually has.
+
+    The seed files carry a little provenance the database does not model — a
+    shortcut edge records which lawn it crosses — and splatting an unknown key
+    into the ORM constructor is a TypeError at startup.
+    """
+    allowed = _columns(model)
+    return [model(**{k: v for k, v in item.items() if k in allowed}) for item in items]
 
 
 def seed_database(db: Session) -> None:
     """Idempotently import the editable checked-in Homewood graph."""
-    graph = _load_json("homewood_graph.json")
+    graph = None
     if not db.scalar(select(GraphNode.id).limit(1)):
-        db.add_all(GraphNode(**item) for item in graph["nodes"])
+        graph = _load_json("homewood_graph.json")
+        db.add_all(_rows(GraphNode, graph["nodes"]))
         db.commit()
-    if not db.scalar(select(GraphEdge.id).limit(1)):
-        db.add_all(_edge_record(item) for item in graph["edges"])
+    if not db.scalar(select(GraphEdge.id).where(GraphEdge.source == "seed").limit(1)):
+        graph = graph or _load_json("homewood_graph.json")
+        edges = _rows(GraphEdge, graph["edges"])
+        for edge in edges:
+            edge.source = "seed"
+            edge.published = True
+        db.add_all(edges)
         db.commit()
     if not db.scalar(select(Landmark.id).limit(1)):
-        db.add_all(Landmark(**item) for item in _load_json("homewood_landmarks.json"))
+        db.add_all(_rows(Landmark, _load_json("homewood_landmarks.json")))
+        db.commit()
+    if not db.scalar(select(LandmarkDoor.id).limit(1)):
+        db.add_all(_rows(LandmarkDoor, _load_json("homewood_doors.json")))
+        db.commit()
     if not db.scalar(select(Hazard.id).limit(1)):
-        db.add_all(Hazard(**item) for item in _load_json("homewood_hazards.json"))
+        db.add_all(_rows(Hazard, _load_json("homewood_hazards.json")))
     db.commit()
+
+
+def ensure_schema() -> None:
+    """SQLite create_all does not add new columns to existing tables."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        edges = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(graph_edges)").fetchall()}
+        if edges and "geometry" not in edges:
+            connection.exec_driver_sql("ALTER TABLE graph_edges ADD COLUMN geometry TEXT DEFAULT '[]'")
+        if edges and "from_place" not in edges:
+            connection.exec_driver_sql("ALTER TABLE graph_edges ADD COLUMN from_place VARCHAR(64)")
+        if edges and "to_place" not in edges:
+            connection.exec_driver_sql("ALTER TABLE graph_edges ADD COLUMN to_place VARCHAR(64)")
+        hazards = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(hazards)").fetchall()}
+        if hazards and "active_when" not in hazards:
+            connection.exec_driver_sql("ALTER TABLE hazards ADD COLUMN active_when VARCHAR(20) DEFAULT 'always'")
+        if hazards and "robot_note" not in hazards:
+            connection.exec_driver_sql("ALTER TABLE hazards ADD COLUMN robot_note TEXT DEFAULT ''")
 
 
 def initialize_database() -> None:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(engine)
+    ensure_schema()
     with SessionLocal() as db:
         seed_database(db)
 

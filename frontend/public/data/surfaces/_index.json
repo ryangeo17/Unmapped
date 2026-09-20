@@ -1,0 +1,112 @@
+{
+  "zoom": 6,
+  "source": "https://map.jhu.edu/arcgis/rest/services/Hosted/Homewood_Campus_Detailed_Basemap_20260422/VectorTileServer",
+  "crs": "EPSG:4326",
+  "layers": {
+    "Athletic_Facilities.geojson": {
+      "layer": "Athletic Facilities",
+      "count": 61,
+      "geometry": {
+        "Polygon": 61
+      },
+      "classes": {}
+    },
+    "Breezeway_and_Skywalk.geojson": {
+      "layer": "Breezeway & Skywalk",
+      "count": 11,
+      "geometry": {
+        "Polygon": 11
+      },
+      "classes": {}
+    },
+    "Bridge.geojson": {
+      "layer": "Bridge",
+      "count": 5,
+      "geometry": {
+        "Polygon": 5
+      },
+      "classes": {}
+    },
+    "Campus_Area.geojson": {
+      "layer": "Campus Area",
+      "count": 112,
+      "geometry": {
+        "Polygon": 112
+      },
+      "classes": {}
+    },
+    "River_Stream.geojson": {
+      "layer": "River /Stream",
+      "count": 11,
+      "geometry": {
+        "Polygon": 11
+      },
+      "classes": {}
+    },
+    "Road_Area.geojson": {
+      "layer": "Road Area",
+      "count": 287,
+      "geometry": {
+        "Polygon": 287
+      },
+      "classes": {}
+    },
+    "Shrubs.geojson": {
+      "layer": "Shrubs",
+      "count": 71,
+      "geometry": {
+        "Point": 11,
+        "MultiPoint": 60
+      },
+      "classes": {}
+    },
+    "Sidewalk.geojson": {
+      "layer": "Sidewalk",
+      "count": 689,
+      "geometry": {
+        "Polygon": 672,
+        "MultiPolygon": 17
+      },
+      "classes": {
+        "Other": 465
+      }
+    },
+    "Sidewalk_Ramp.geojson": {
+      "layer": "Sidewalk Ramp",
+      "count": 33,
+      "geometry": {
+        "Polygon": 33
+      },
+      "classes": {}
+    },
+    "Stairs.geojson": {
+      "layer": "Stairs",
+      "count": 316,
+      "geometry": {
+        "Polygon": 316
+      },
+      "classes": {}
+    },
+    "Trees.geojson": {
+      "layer": "Trees",
+      "count": 126,
+      "geometry": {
+        "MultiPoint": 117,
+        "Point": 9
+      },
+      "classes": {}
+    },
+    "Vegetation.geojson": {
+      "layer": "Vegetation",
+      "count": 515,
+      "geometry": {
+        "Polygon": 515
+      },
+      "classes": {
+        "Woodland": 106,
+        "Landscape Beds": 70,
+        "Hedgerows": 339
+      }
+    }
+  }
+}

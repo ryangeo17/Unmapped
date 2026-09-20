@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { addCampusLayers, applyOverlayVisibility, loadCampusData } from './campusLayers'
 import type { Hazard, LatLng, RouteResult } from './types'
 
 const HOMEWOOD: [number, number] = [-76.6205, 39.3299]
@@ -108,27 +109,39 @@ function bearingDelta(from: number, to: number) {
 interface MapViewProps {
   route?: RouteResult
   currentPosition?: LatLng
-  suggestionPoints: LatLng[]
-  suggestionMode: boolean
-  showGraph: boolean
+  suggestionPoints?: LatLng[]
+  suggestionMode?: boolean
+  showGraph?: boolean
+  showCampus?: boolean
   nighttime?: boolean
   navigationActive?: boolean
-  avoidedHazards: string[]
-  onAvoidHazard: (hazard: Hazard) => void
-  onSuggestionPoint: (point: LatLng) => void
+  avoidedHazards?: string[]
+  onAvoidHazard?: (hazard: Hazard) => void
+  onSuggestionPoint?: (point: LatLng) => void
+  onMapClick?: (point: LatLng) => void
+  verifiedPath?: LatLng[]
+  editableHazards?: Hazard[]
+  selectedHazardId?: string
+  onHazardClick?: (hazard: Hazard) => void
 }
 
 export default function MapView({
   route,
   currentPosition,
-  suggestionPoints,
-  suggestionMode,
-  showGraph,
+  suggestionPoints = [],
+  suggestionMode = false,
+  showGraph = false,
+  showCampus = false,
   nighttime = false,
   navigationActive = false,
-  avoidedHazards,
+  avoidedHazards = [],
   onAvoidHazard,
   onSuggestionPoint,
+  onMapClick,
+  verifiedPath = [],
+  editableHazards = [],
+  selectedHazardId,
+  onHazardClick,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map>()
@@ -137,8 +150,10 @@ export default function MapView({
   const frameRef = useRef<number>()
   const wasNavigatingRef = useRef(false)
   const [threeDimensional, setThreeDimensional] = useState(true)
-  const clickState = useRef({ suggestionMode, onSuggestionPoint })
-  clickState.current = { suggestionMode, onSuggestionPoint }
+  const clickState = useRef({ suggestionMode, onSuggestionPoint, onMapClick })
+  clickState.current = { suggestionMode, onSuggestionPoint, onMapClick }
+  const overlayRef = useRef({ showGraph, showCampus })
+  overlayRef.current = { showGraph, showCampus }
 
   useEffect(() => {
     if (!containerRef.current || !MAPBOX_TOKEN || mapRef.current) return
@@ -163,21 +178,17 @@ export default function MapView({
     })
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right')
     map.on('click', (event) => {
+      const point: LatLng = [event.lngLat.lat, event.lngLat.lng]
       if (clickState.current.suggestionMode) {
-        clickState.current.onSuggestionPoint([event.lngLat.lat, event.lngLat.lng])
+        clickState.current.onSuggestionPoint?.(point)
+      } else {
+        clickState.current.onMapClick?.(point)
       }
     })
     map.on('style.load', () => {
-      map.addSource('unmapped-graph', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('unmapped-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addSource('unmapped-suggestion', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      map.addLayer({
-        id: 'unmapped-graph',
-        type: 'line',
-        source: 'unmapped-graph',
-        slot: 'middle',
-        paint: { 'line-color': '#4b83c3', 'line-width': 2, 'line-opacity': 0.38, 'line-dasharray': [2, 3] },
-      })
+      map.addSource('unmapped-verified', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       map.addLayer({
         id: 'unmapped-route-shadow',
         type: 'line',
@@ -199,6 +210,17 @@ export default function MapView({
         slot: 'top',
         paint: { 'line-color': '#7c3aed', 'line-width': 5, 'line-dasharray': [1, 1.5] },
       })
+      map.addLayer({
+        id: 'unmapped-verified',
+        type: 'line',
+        source: 'unmapped-verified',
+        slot: 'top',
+        paint: { 'line-color': '#0f9d58', 'line-width': 7, 'line-opacity': 0.92 },
+      })
+      // Added at style load so they sit below the route, which is added above
+      // them here and stays above them: Mapbox draws in the order layers were
+      // added within a slot, and the route is in 'top'.
+      addCampusLayers(map)
     })
     mapRef.current = map
     return () => {
@@ -214,15 +236,106 @@ export default function MapView({
     if (!map) return
     const update = () => {
       setLineData(map, 'unmapped-route', route?.coordinates ? [route.coordinates] : [])
-      setLineData(map, 'unmapped-graph', showGraph ? route?.graphEdges || [] : [])
       setLineData(map, 'unmapped-suggestion', suggestionPoints.length > 1 ? [suggestionPoints] : [])
-      if (map.getLayer('unmapped-graph')) {
-        map.setLayoutProperty('unmapped-graph', 'visibility', showGraph ? 'visible' : 'none')
-      }
+      setLineData(map, 'unmapped-verified', verifiedPath.length > 1 ? [verifiedPath] : [])
     }
     if (map.isStyleLoaded()) update()
     else map.once('style.load', update)
-  }, [route, showGraph, suggestionPoints])
+  }, [route, suggestionPoints, verifiedPath])
+
+  useEffect(() => {
+    if (!navigationActive || !currentPosition || !route?.coordinates.length) {
+      cameraTargetRef.current = undefined
+      return
+    }
+    const heading = routeHeading(currentPosition, route.coordinates)
+    cameraTargetRef.current = {
+      center: [currentPosition[1], currentPosition[0]],
+      bearing: heading ?? cameraTargetRef.current?.bearing ?? mapRef.current?.getBearing() ?? 0,
+    }
+  }, [currentPosition, navigationActive, route])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!navigationActive) {
+      map.setPadding({ top: 0, right: 0, bottom: 0, left: 0 })
+      if (wasNavigatingRef.current) {
+        wasNavigatingRef.current = false
+        map.easeTo({ bearing: threeDimensional ? -18 : 0, zoom: 16.4, duration: 700 })
+      }
+      return
+    }
+    wasNavigatingRef.current = true
+    map.setPadding({ top: NAVIGATION_TOP_PADDING, right: 0, bottom: 0, left: 0 })
+    // A single rAF loop eases the camera every frame. Firing easeTo per GPS tick
+    // cancels the previous animation before it makes progress, so the map never turns.
+    const followRoute = () => {
+      frameRef.current = requestAnimationFrame(followRoute)
+      const target = cameraTargetRef.current
+      if (!target) return
+      const center = map.getCenter()
+      const bearing = map.getBearing()
+      const zoom = map.getZoom()
+      map.jumpTo({
+        center: [
+          center.lng + (target.center[0] - center.lng) * 0.2,
+          center.lat + (target.center[1] - center.lat) * 0.2,
+        ],
+        bearing: bearing + bearingDelta(bearing, target.bearing) * 0.1,
+        zoom: zoom + (NAVIGATION_ZOOM - zoom) * 0.06,
+        pitch: threeDimensional ? 62 : 0,
+      })
+    }
+    frameRef.current = requestAnimationFrame(followRoute)
+    return () => {
+      if (frameRef.current !== undefined) cancelAnimationFrame(frameRef.current)
+      frameRef.current = undefined
+    }
+  }, [navigationActive, threeDimensional])
+
+  // Apply Graph/Campus after the style exists. Calling addSource/addLayer
+  // before that throws and whites out the whole page.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    let cancelled = false
+    let retry: number | undefined
+    const update = () => {
+      if (cancelled) return
+      try {
+        addCampusLayers(map)
+        const { showGraph: graphOn, showCampus: campusOn } = overlayRef.current
+        const reveal = () => {
+          if (cancelled) return
+          applyOverlayVisibility(map, overlayRef.current.showGraph, overlayRef.current.showCampus)
+        }
+        if (graphOn || campusOn) void loadCampusData(map).then(reveal)
+        else reveal()
+      } catch {
+        retry = window.setTimeout(update, 200)
+      }
+    }
+    map.on('style.load', update)
+    map.once('idle', update)
+    retry = window.setTimeout(update, 0)
+    if (showCampus) {
+      try {
+        const center = map.getCenter()
+        if (Math.hypot(center.lng - HOMEWOOD[0], center.lat - HOMEWOOD[1]) > 0.012) {
+          map.easeTo({ center: HOMEWOOD, zoom: Math.max(map.getZoom(), 16), duration: 700 })
+        }
+      } catch {
+        // Map is still starting; Campus can stay at the current camera.
+      }
+    }
+    return () => {
+      cancelled = true
+      if (retry !== undefined) window.clearTimeout(retry)
+      map.off('style.load', update)
+      map.off('idle', update)
+    }
+  }, [showGraph, showCampus])
 
   useEffect(() => {
     const map = mapRef.current
@@ -280,11 +393,45 @@ export default function MapView({
       avoid.className = 'text-button'
       avoid.disabled = avoidedHazards.includes(hazard.id)
       avoid.textContent = avoid.disabled ? 'Already avoiding' : 'Avoid this obstacle'
-      avoid.addEventListener('click', () => onAvoidHazard(hazard))
-      popupContent.append(status, avoid)
+      avoid.addEventListener('click', () => onAvoidHazard?.(hazard))
+      popupContent.append(status)
+      if (onAvoidHazard) popupContent.append(avoid)
+      if (hazard.robotNote) {
+        const note = document.createElement('p')
+        note.className = 'hazard-popup-note'
+        note.textContent = hazard.robotNote
+        popupContent.insertBefore(note, status)
+      }
+      if (hazard.activeWhen && hazard.activeWhen !== 'always') {
+        const when = document.createElement('small')
+        when.textContent = hazard.activeWhen === 'night' ? 'Applies at night' : 'Applies during the day'
+        popupContent.insertBefore(when, status)
+      }
       const popup = new mapboxgl.Popup({ offset: 18, maxWidth: '270px' }).setDOMContent(popupContent)
       markersRef.current.push(
         new mapboxgl.Marker({ element }).setLngLat([hazard.coordinates[1], hazard.coordinates[0]]).setPopup(popup).addTo(map),
+      )
+    })
+    editableHazards.forEach((hazard) => {
+      const element = document.createElement('button')
+      element.type = 'button'
+      element.className = `mapbox-hazard mapbox-hazard--${hazard.severity}${selectedHazardId === hazard.id ? ' is-selected' : ''}`
+      element.setAttribute('aria-label', `Edit caution: ${hazard.title}`)
+      element.textContent = '!'
+      element.addEventListener('click', (event) => {
+        event.stopPropagation()
+        onHazardClick?.(hazard)
+      })
+      markersRef.current.push(
+        new mapboxgl.Marker({ element }).setLngLat([hazard.coordinates[1], hazard.coordinates[0]]).addTo(map),
+      )
+    })
+    suggestionPoints.forEach((point, index) => {
+      const element = document.createElement('span')
+      element.className = 'map-pin map-pin--vertex'
+      element.textContent = String(index + 1)
+      markersRef.current.push(
+        new mapboxgl.Marker({ element }).setLngLat([point[1], point[0]]).addTo(map),
       )
     })
     if (currentPosition) {
@@ -298,69 +445,12 @@ export default function MapView({
           .addTo(map),
       )
     }
-  }, [route, currentPosition, avoidedHazards, onAvoidHazard, threeDimensional, navigationActive])
-
-  useEffect(() => {
-    if (!navigationActive || !currentPosition || !route?.coordinates.length) {
-      cameraTargetRef.current = undefined
-      return
-    }
-    const heading = routeHeading(currentPosition, route.coordinates)
-    cameraTargetRef.current = {
-      center: [currentPosition[1], currentPosition[0]],
-      bearing: heading ?? cameraTargetRef.current?.bearing ?? mapRef.current?.getBearing() ?? 0,
-    }
-  }, [currentPosition, navigationActive, route])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-    if (!navigationActive) {
-      map.setPadding({ top: 0, right: 0, bottom: 0, left: 0 })
-      if (wasNavigatingRef.current) {
-        wasNavigatingRef.current = false
-        map.easeTo({ bearing: threeDimensional ? -18 : 0, zoom: 16.4, duration: 700 })
-      }
-      return
-    }
-    wasNavigatingRef.current = true
-    map.setPadding({ top: NAVIGATION_TOP_PADDING, right: 0, bottom: 0, left: 0 })
-    // A single rAF loop eases the camera every frame. Firing easeTo per GPS tick
-    // cancels the previous animation before it makes progress, so the map never turns.
-    const followRoute = () => {
-      frameRef.current = requestAnimationFrame(followRoute)
-      const target = cameraTargetRef.current
-      if (!target) return
-      const center = map.getCenter()
-      const bearing = map.getBearing()
-      const zoom = map.getZoom()
-      map.jumpTo({
-        center: [
-          center.lng + (target.center[0] - center.lng) * 0.2,
-          center.lat + (target.center[1] - center.lat) * 0.2,
-        ],
-        bearing: bearing + bearingDelta(bearing, target.bearing) * 0.1,
-        zoom: zoom + (NAVIGATION_ZOOM - zoom) * 0.06,
-        pitch: threeDimensional ? 62 : 0,
-      })
-    }
-    frameRef.current = requestAnimationFrame(followRoute)
-    return () => {
-      if (frameRef.current !== undefined) cancelAnimationFrame(frameRef.current)
-      frameRef.current = undefined
-    }
-  }, [navigationActive, threeDimensional])
+  }, [route, currentPosition, avoidedHazards, onAvoidHazard, threeDimensional, navigationActive, editableHazards, selectedHazardId, onHazardClick, suggestionPoints, verifiedPath])
 
   function toggleDimension() {
     const next = !threeDimensional
     setThreeDimensional(next)
-    const map = mapRef.current
-    if (!map) return
-    map.easeTo({
-      pitch: next ? 62 : 0,
-      bearing: navigationActive ? map.getBearing() : next ? -18 : 0,
-      duration: 650,
-    })
+    mapRef.current?.easeTo({ pitch: next ? 62 : 0, bearing: next ? -18 : 0, duration: 650 })
   }
 
   if (!MAPBOX_TOKEN) {
