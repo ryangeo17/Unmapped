@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import {
   PlannerUnreachable,
@@ -16,15 +16,40 @@ export default function RouteForm() {
   const setRoute = useLayerStore((s) => s.setRoute)
   const places = usePlaces()
 
+  const planned = useRef(false)
+
   const plan = useMutation<RouteResult, Error, void>({
     mutationFn: () => planRoute(origin.trim(), destination.trim(), smarter),
-    onSuccess: (result) => setRoute(result.status === 'ok' ? result : null),
+    onSuccess: (result) => {
+      planned.current = true
+      setRoute(result.status === 'ok' ? result : null)
+    },
     onError: () => setRoute(null),
   })
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (origin.trim() && destination.trim()) plan.mutate()
+  }
+
+  // Flipping the switch re-solves straight away. Leaving the old answer on
+  // screen under a switch that now says something else is worse than a blank
+  // panel — the numbers would be describing a route nobody asked for.
+  useEffect(() => {
+    if (planned.current) plan.mutate()
+    // plan is a stable mutation handle; re-solving on every render is not wanted
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smarter])
+
+  // Editing a name invalidates the answer too, but re-solving on each keystroke
+  // would be noise, so clear and wait for the button.
+  const edit = (set: (v: string) => void) => (value: string) => {
+    set(value)
+    if (planned.current) {
+      planned.current = false
+      plan.reset()
+      setRoute(null)
+    }
   }
 
   // An ambiguous name comes back with candidates; filling the field from one
@@ -58,8 +83,8 @@ export default function RouteForm() {
       <h2 className="text-sm font-medium text-gray-900">Plan a walk</h2>
 
       <form onSubmit={submit} className="space-y-3">
-        {field('From', origin, setOrigin)}
-        {field('To', destination, setDestination)}
+        {field('From', origin, edit(setOrigin))}
+        {field('To', destination, edit(setDestination))}
         <datalist id="campus-places">
           {(places.data ?? []).map((p) => (
             <option key={p.name} value={p.name} />
