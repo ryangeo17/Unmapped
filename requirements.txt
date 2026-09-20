@@ -1,0 +1,10 @@
+# Runtime dependencies for the Vercel serverless API (api/index.py).
+# Deliberately not backend/requirements.txt: uvicorn is unused on Vercel, which
+# supplies its own ASGI server, and pytest and httpx are test-only. Keeping them
+# out is what holds the function under the 250 MB unzipped limit with room to
+# spare.
+fastapi==0.116.1
+SQLAlchemy==2.0.43
+pydantic==2.11.7
+python-multipart==0.0.20
+python-dotenv==1.1.1
