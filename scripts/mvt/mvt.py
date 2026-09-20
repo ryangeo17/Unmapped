@@ -1,4 +1,4 @@
-"""最小 Mapbox Vector Tile 解码器，纯标准库。"""
+"""Minimal Mapbox Vector Tile decoder, standard library only."""
 import struct
 
 def _varint(b,i):
@@ -9,7 +9,7 @@ def _varint(b,i):
         s+=7
 
 def _fields(b):
-    """产出 (field_number, wire_type, value_or_bytes)"""
+    """Yields (field_number, wire_type, value_or_bytes)."""
     i=0; n=len(b)
     while i<n:
         k,i=_varint(b,i); fn,wt=k>>3,k&7
@@ -38,7 +38,7 @@ def _value(b):
     return None
 
 def decode(buf):
-    """-> {layer_name: {"extent":int,"features":[{"type":int,"props":{},"geom":[[(x,y)...]]}]}}"""
+    """-> {layer_name: {"extent": int, "features": [{"type", "props", "geom"}]}}"""
     layers={}
     for fn,wt,v in _fields(buf):
         if fn!=3: continue
@@ -58,7 +58,7 @@ def decode(buf):
                 elif f3==4: geo=_packed(v3) if w3==2 else [v3]
             props={keys[tags[i]]:vals[tags[i+1]] for i in range(0,len(tags)-1,2)
                    if tags[i]<len(keys) and tags[i+1]<len(vals)}
-            # 解 geometry 命令流
+            # Decode the geometry command stream
             rings=[];cur=[];x=y=0;i=0
             while i<len(geo):
                 cmd=geo[i]; op,cnt=cmd&7,cmd>>3; i+=1

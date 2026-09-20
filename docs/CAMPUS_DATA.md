@@ -1,133 +1,146 @@
-# JHU Homewood 室内地图数据结构
+# JHU Homewood campus data
 
-导出源：Web map `ea3919e7b5c242ffa8cafb87399b6901`（"Homewood Campus Indoors Viewer"），
-Portal `https://map.jhu.edu/portal`。导出日期 2026-09-19，脚本 `indoors_dump.py`，
-输出目录 `indoors_out/`，坐标 WGS84 经纬度（wkid 4326）。
+Exported from web map `ea3919e7b5c242ffa8cafb87399b6901` ("Homewood Campus
+Indoors Viewer") on portal `https://map.jhu.edu/portal`, 2026-09-19, by
+`scripts/indoors_dump.py`. Coordinates are WGS84 lon/lat (wkid 4326).
+
+This is the field reference for everything under `frontend/public/data/`. Read
+§2 before writing any join: several foreign keys do not behave the way the
+AIIM documentation says they do.
 
 ---
 
-## 0. 先读这一节：没有房间数据
+## 0. Read this first: there is no room data
 
-**这个部署里不存在房间（Units）和楼层（Levels）要素。** 这不是权限问题，也不是脚本问题：
+**Units and Levels do not exist in this deployment.** Not a permissions
+problem, not a bug in the exporter:
 
-| 验证途径 | 结果 |
+| How it was checked | Result |
 |---|---|
-| Web map 的 9 个 operational layer | 没有 Units / Levels / Details |
-| `/arcgis/rest/services` 全部 7 个目录、19 个服务枚举 | 没有任何 Units / Levels / Details / Transitions / Occupants 服务 |
-| `Indoors/Sites/MapServer` 逐 id 探测（0–25） | 只有 id 24 = Sites，其余全部不存在 |
-| 官方移动包 `Homewood_Campus_Indoors_Mobile.mmpk`（4.9 MB，public） | 表存在但 **`Units` 0 行、`Levels` 0 行、`Details` 0 行、`Occupants` 0 行** |
+| The web map's 9 operational layers | No Units / Levels / Details |
+| All 7 folders and 19 services under `/arcgis/rest/services` | No Units / Levels / Details / Transitions / Occupants service anywhere |
+| `Indoors/Sites/MapServer`, probed id by id (0–25) | Only id 24 = Sites; every other id 404s |
+| The official mobile package `Homewood_Campus_Indoors_Mobile.mmpk` (4.9 MB, public) | The tables exist but hold **0 rows** for `Units`, `Levels`, `Details` and `Occupants` |
 
-移动包里的 runtime geodatabase 建了完整 AIIM 表结构，但室内空间表是空的。JHU 目前只发布到
-**建筑轮廓 + 路网 + 出入口** 这一层级，没有发布楼层平面和房间多边形。
+The runtime geodatabase inside the mobile package has the full AIIM schema, and
+the indoor-space tables are empty. JHU publishes down to **building footprints,
+the path network and entrances**, and no further.
 
-因此：**你要的"房间号 / 房间名 / 用途分类"在公开数据里没有对应要素。**
-可用的最细粒度是"建筑 + 楼层序号 + 路径段"。第 3 节给出最接近的替代字段。
+So: **room numbers, room names and room use classifications are not available.**
+The finest granularity is building + floor ordinal + path segment. §3 lists the
+closest substitutes.
 
-移动包里另有两张公开服务没有的表，如果后续需要楼层连通性可以从那里取：
-`Transitions`（67 行，跨楼层连接）、`Stairs`（270 行）。注意移动包是较旧快照
-（Facilities 94 行 vs 线上 100 行），线上服务更新。
+The mobile package does hold two tables the public services do not, if floor
+connectivity is ever needed: `Transitions` (67 rows, cross-floor links) and
+`Stairs` (270 rows). Note it is an older snapshot — 94 facilities against 100
+live — so the services are fresher.
 
 ---
 
-## 1. 图层清单
+## 1. Layers
 
-全部 9 个图层导出成功，0 失败。
+All 9 exported successfully.
 
-| 图层 | 文件 | 几何 | 要素数 | 用途 |
+| Layer | File | Geometry | Features | What it is |
 |---|---|---|---|---|
-| Sites | `Sites.geojson` | Polygon | **1** | 校区边界，整个 Homewood 就一个面 |
-| Facilities | `Facilities.geojson` | Polygon | **100** | 建筑轮廓。核心图层 |
-| Exterior Spaces | `Exterior_Spaces.geojson` | Polygon | **16** | 室外命名空间（Quad、Beach、庭院），当作"伪建筑"建模 |
-| Pathways | `Pathways.geojson` | Polyline | **2146** | 路网边。室内外都在这一层 |
-| Polygon Barriers | `Polygon_Barriers.geojson` | Polygon | **7** | 施工/临时封闭区，路径规划避让面 |
-| Landmarks | `Landmarks.geojson` | Point | **22** | 地标点（电梯、Quad、隧道口） |
-| Elevators | `Elevators.geojson` | Point | **15** | 电梯点位，带照片 |
-| Entryways-All | `Entryways-All.geojson` | Point | **337** | 全部出入口 |
-| Entryways-Accessible | `Entryways-Accessible.geojson` | Point | **337** | 同一个服务图层，**数据完全相同**，Web map 里只是样式和默认可见性不同 |
+| Sites | `Sites.geojson` | Polygon | **1** | Campus boundary; all of Homewood is one polygon |
+| Facilities | `Facilities.geojson` | Polygon | **100** | Building footprints. The core layer |
+| Exterior Spaces | `Exterior_Spaces.geojson` | Polygon | **16** | Named outdoor spaces (quads, the Beach, courtyards), modelled as pseudo-buildings |
+| Pathways | `Pathways.geojson` | Polyline | **2146** | The path network. Indoor and outdoor are both in here |
+| Polygon Barriers | `Polygon_Barriers.geojson` | Polygon | **7** | Construction and temporary closures, as avoidance areas |
+| Landmarks | `Landmarks.geojson` | Point | **22** | Landmarks (lifts, quads, tunnel entrances) |
+| Elevators | `Elevators.geojson` | Point | **15** | Lifts, with photos |
+| Entryways-All | `Entryways-All.geojson` | Point | **337** | Every entrance |
+| Entryways-Accessible | *(not exported)* | Point | 337 | The same service layer with **identical data**; only the styling and default visibility differ in the web map |
 
-> `Entryways-All` 和 `Entryways-Accessible` 指向同一个 URL
-> (`Hosted/Entryways/FeatureServer/0`) 且都没有 definitionExpression。
-> 要筛无障碍出入口，自己按 `accessible_entrance = 'Y'` 过滤（89 个）。
+> Both Entryways entries point at the same URL
+> (`Hosted/Entryways/FeatureServer/0`) with no definitionExpression, so only
+> one file is kept. Filter `accessible_entrance = 'Y'` yourself for the 89
+> step-free ones.
 
-### Web map 层面的过滤器
+### Filters defined in the web map
 
-只有 Pathways 带了 `definitionExpression`：`pathdisplay IS NULL`。
-但当前数据里 **`pathdisplay` 2146 行全为 NULL**，所以这个过滤器是空操作，
-导出的 2146 条就是应用实际显示的全集。脚本默认导出全集，`--apply-filters` 可按原表达式过滤。
+Only Pathways carries a `definitionExpression`: `pathdisplay IS NULL`. But
+`pathdisplay` is **NULL on all 2146 rows**, so the filter is a no-op and the
+exported 2146 are exactly what the app displays. The exporter keeps everything
+by default; `--apply-filters` applies the original expression.
 
 ---
 
-## 2. 图层关系图
+## 2. How the layers relate
 
 ```
                     Sites  (1)
                       │  NAME = "Homewood Campus"
                       │
-                      │  ⚠ 用 NAME 关联，不是 SITE_ID
-                      │     Sites.SITE_ID 是空格 " "，无效
+                      │  ⚠ join on NAME, not SITE_ID.
+                      │     Sites.SITE_ID is a single space " ", useless.
                       │
               Facilities.site_id
                       │
                       ▼
             ┌─── Facilities (100) ───┐
-            │   PK: facility_id      │      ← 唯一可靠的外键
-            │   ("0741" 四位字符串)   │
+            │   PK: facility_id      │   ← the only dependable foreign key
+            │   (4-char string, "0741")
             └────────────────────────┘
                       ▲
         ┌─────────────┼──────────────┬───────────────┐
         │             │              │               │
-   facility_id   facility_id    facility_id      (无键)
-   92/2146 ✓      4/337 ⚠        0/15 ✗          按空间/名称
+   facility_id   facility_id    facility_id      (no key)
+   92/2146 ✓      4/337 ⚠        0/15 ✗        by geometry/name
         │             │              │               │
     Pathways      Entryways      Elevators       Landmarks
      (2146)         (337)           (15)            (22)
 
 
-   Exterior Spaces (16) —— 字段结构与 Facilities 完全相同，
-     但 facility_id 自成一套编码（"00X13"、"00X01"），
-     与 Facilities.facility_id 零交集。当作独立图层用。
+   Exterior Spaces (16) — identical field structure to Facilities, but
+     facility_id uses its own code space ("00X13", "00X01") with zero
+     overlap. Treat it as an independent layer.
 
-   Polygon Barriers (7) —— 无任何外键，纯空间要素。
+   Polygon Barriers (7) — no foreign keys at all, purely spatial.
 
-   Levels / Units / Details ———— 不存在（见第 0 节）
+   Levels / Units / Details ———— do not exist (see §0)
         ↑
-   Pathways.level_id、Landmarks.level_id、Elevators.level_id
-   都是指向 Levels 的悬空外键
+   Pathways.level_id, Landmarks.level_id and Elevators.level_id are all
+   dangling references to them.
 ```
 
-### 外键实测覆盖率
+### Measured foreign-key coverage
 
-导出后逐条比对的结果，**不要按 AIIM 文档想当然**：
+Counted row by row after export. **Do not assume the AIIM documentation:**
 
-| 关系 | 实际情况 |
+| Relationship | Reality |
 |---|---|
-| `Facilities.site_id` → `Sites.NAME` | 100/100 命中。**注意是关联 NAME 不是 SITE_ID** |
-| `Pathways.facility_id` → `Facilities.facility_id` | 只有 92/2146 非空，非空的全部命中。其余 2054 条是室外路段 |
-| `Entryways.facility_id` → `Facilities.facility_id` | 只有 **4/337** 非空。基本没填，要关联建筑得做空间 join |
-| `Elevators.facility_id` | **15/15 全为 NULL**。`facility_name` 也全为 NULL。只能靠 `description`（如 "Ames Hall Elevator"）做字符串匹配 |
-| `Exterior_Spaces.facility_id` | 16/16 非空但与 Facilities **零交集**，独立编码 |
-| `*.level_id` → `Levels` | Levels 不存在。Pathways 里 1521 条是 `"0"`，522 条 NULL，少量是 `"0062-03"`（建筑-楼层）格式 |
+| `Facilities.site_id` → `Sites.NAME` | 100/100 match. **Joins on NAME, not SITE_ID** |
+| `Pathways.facility_id` → `Facilities.facility_id` | Only 92/2146 populated; all of those match. The other 2054 are outdoor segments |
+| `Entryways.facility_id` → `Facilities.facility_id` | Only **4/337** populated. Effectively unfilled — use a spatial join |
+| `Elevators.facility_id` | **NULL on all 15**, as is `facility_name`. Only `description` ("Ames Hall Elevator") gives a hint |
+| `Exterior_Spaces.facility_id` | 16/16 populated but **zero overlap** with Facilities; separate code space |
+| `*.level_id` → `Levels` | Levels does not exist. 1521 Pathways rows are `"0"`, 522 NULL, a few `"0062-03"` (building-floor) |
 
-**实用建议**：唯一能放心 join 的是 `Facilities.facility_id`。
-Entryways 和 Elevators 关联到建筑请用点面相交（point-in-polygon / 最近邻）自己算。
+**Practical advice:** `Facilities.facility_id` is the only join you can trust.
+Link Entryways and Elevators to buildings with point-in-polygon or nearest-
+neighbour yourself. `scripts/campus/places.py` does exactly that.
 
-### 楼层怎么表达
+### How floors are represented
 
-没有 Levels 图层，楼层信息散在各表的整数字段里：
+With no Levels layer, floor information is scattered across integer fields:
 
-- `Pathways.vertical_order` — 实测取值 `-2, -1, 0, 1, 2, 3, 4`（0 占 2071 条）
-- `Entryways.geo_level` — 带编码域，见第 5 节
-- `Elevators.vertical_order`、`Landmarks.vertical_order`
-- `Pathways.level_name_from` / `level_name_to` — 大量是空格 `" "`，不可靠
+- `Pathways.vertical_order` — observed values `-2, -1, 0, 1, 2, 3, 4` (2071 rows are 0)
+- `Entryways.geo_level` — has a coded domain, see §5
+- `Elevators.vertical_order`, `Landmarks.vertical_order`
+- `Pathways.level_name_from` / `level_name_to` — mostly a single space `" "`, unusable
 
-**做楼层切换用 `vertical_order` / `geo_level` 这个整数，不要用 `level_id`。**
+**Use the `vertical_order` / `geo_level` integers for floor switching, never
+`level_id`.**
 
 ---
 
-## 3. 房间号 / 房间名 / 用途分类
+## 3. Room number, room name, use classification
 
-标准 AIIM 里这三项在 `Units` 表（`UNIT_ID` / `NAME` / `USE_TYPE`）。
-该表不存在。移动包中它的字段定义如下，可作为将来 JHU 发布数据时的接口预留：
+In standard AIIM these live in `Units` (`UNIT_ID` / `NAME` / `USE_TYPE`). That
+table does not exist here. Its schema in the mobile package, as an interface
+placeholder for whenever JHU publishes it:
 
 ```
 Units: UNIT_ID, USE_TYPE, NAME, NAME_LONG, LEVEL_ID, SCHEDULE_EMAIL,
@@ -137,80 +150,82 @@ Levels: LEVEL_ID, NAME, NAME_SHORT, LEVEL_NUMBER, FACILITY_ID,
         AREA_GROSS, HEIGHT_RELATIVE, VERTICAL_ORDER, SHAPE
 ```
 
-现有数据中最接近的替代：
+The closest substitutes in what does exist:
 
-| 你要的 | 用这个字段 | 图层 | 说明 |
+| What you want | Field | Layer | Notes |
 |---|---|---|---|
-| 房间号 | — | — | 无。最细是建筑号 `facility_id`（`"0741"`） |
-| 建筑编号 | `facility_id` | Facilities | 四位字符串，与 `archibus_id` 取值相同 |
-| 建筑名 | `name` | Facilities | 100/100 有值。`name_long` 与 `name` **完全一致**，不用重复取 |
-| 建筑简称 | `name_alias` | Facilities | 只有 12 条有值（`MSEL`、`AMR 1`…），搜索时作为补充 |
-| **用途分类** | `primary_use` | Facilities | 见第 5 节。92/100 有值 |
-| 室外空间名 | `name` | Exterior Spaces | `The Beach`、`Decker Quad` 等 |
-| 出入口名 | `entrance_name` | Entryways | 314/337 有值 |
-| 电梯名 | `description` | Elevators / Landmarks | 如 `Ames Hall Elevator` |
-| 建筑照片 | `image_url` | Facilities | 86/100 有值 |
-| 地址 | `address` | Facilities | |
-| 校区分组 | `campus` | Facilities | `Homewood` 60 / `Homewood Off` 26 / `Homewood Housing` 13 |
+| Room number | — | — | Unavailable. The finest is the building's `facility_id` (`"0741"`) |
+| Building number | `facility_id` | Facilities | 4-char string, same values as `archibus_id` |
+| Building name | `name` | Facilities | 100/100 populated. `name_long` is **identical**; do not read both |
+| Short name | `name_alias` | Facilities | Only 12 populated (`MSEL`, `AMR 1`…). Useful as a search alias |
+| **Use classification** | `primary_use` | Facilities | See §5. 92/100 populated |
+| Outdoor space name | `name` | Exterior Spaces | `The Beach`, `Decker Quad` and so on |
+| Entrance name | `entrance_name` | Entryways | 314/337 populated |
+| Lift name | `description` | Elevators / Landmarks | e.g. `Ames Hall Elevator` |
+| Building photo | `image_url` | Facilities | 86/100 populated |
+| Address | `address` | Facilities | |
+| Campus grouping | `campus` | Facilities | `Homewood` 60 / `Homewood Off` 26 / `Homewood Housing` 13 |
 
 ---
 
-## 4. 标注（Labels）
+## 4. Labels and scale thresholds
 
-`labels.csv` 里只有两个图层定义了标注，全部是 Arcade 表达式：
+Only two layers define labels, both as Arcade expressions (`docs/labels.csv`):
 
-| 图层 | 表达式 | minScale | maxScale | 放置方式 | 字体 |
+| Layer | Expression | minScale | maxScale | Placement | Font |
 |---|---|---|---|---|---|
-| Facilities | `$feature.NAME` | **2000** | 0（无下限） | AlwaysHorizontal | Arial 10 |
-| Exterior Spaces | `$feature.NAME` | 无限制 | 0 | AlwaysHorizontal | Arial 8 |
+| Facilities | `$feature.NAME` | **2000** | 0 (no limit) | AlwaysHorizontal | Arial 10 |
+| Exterior Spaces | `$feature.NAME` | none | 0 | AlwaysHorizontal | Arial 8 |
 
-- `minScale: 2000` 指比例尺分母 ≤ 2000（即放大到 1:2000 以内）时才画建筑名。
-  Exterior Spaces 的标注任何比例尺都显示。
-- 其余 7 个图层没有标注类，要显示名字得自己在前端画。
+`minScale: 2000` means the building name is drawn only when the scale
+denominator is 2000 or less, i.e. zoomed in past 1:2000. Exterior Spaces
+labels draw at every scale. The other 7 layers have no label classes; draw
+names yourself if you want them.
 
-### 图层自身的可见比例尺
+Layer visibility has its own thresholds (`minScale` = not drawn when the
+denominator exceeds it):
 
-标注之外，图层本身也有比例尺门槛（`minScale` = 比例尺分母大于它就不画）：
-
-| 图层 | minScale | 含义 |
+| Layer | minScale | Meaning |
 |---|---|---|
-| Facilities | 50000 | 1:50000 以内可见，最早出现 |
-| Pathways | 1000 | 要放大到 1:1000 才出现 |
-| Exterior Spaces | 1000 | 同上 |
-| Elevators / Landmarks / Entryways ×2 | 1500 | 1:1500 |
-| Sites / Polygon Barriers | 0 | 始终可见 |
+| Facilities | 50000 | Visible from 1:50000 — appears first |
+| Pathways | 1000 | Only from 1:1000 |
+| Exterior Spaces | 1000 | Same |
+| Elevators / Landmarks / Entryways | 1500 | 1:1500 |
+| Sites / Polygon Barriers | 0 | Always visible |
 
-前端复刻这套层级显示，照抄这几个数就行。
+Copy these numbers to reproduce the official map's layering.
 
 ---
 
-## 5. 编码域（code → name）
+## 5. Coded domains
 
-完整清单见 `fields.csv` 的 `codedValues` 列。以下是会用到的：
+The complete list is the `codedValues` column of `docs/fields.csv`. The ones
+that matter:
 
-### Facilities.primary_use — 建筑用途（实测分布）
+### `Facilities.primary_use` — building use (observed distribution)
 
-| 代码 | 名称 | 实际条数 |
-|---|---|---|
-| Research | Research | 22 |
-| Residence Hall | Residence Hall | 17 |
-| Office | Office | 17 |
-| Mixed Use | Mixed Use | 7 |
-| Instruction | Instruction | 6 |
-| Administration | Administration | 5 |
-| Recreation | Recreation | 5 |
-| Library | Library | 4 |
-| Parking Garage | Parking Garage | 4 |
-| Power Plant | Power Plant | 3 |
-| Multifamily | Multifamily | 2 |
-| *(NULL)* | 未填 | 8 |
+| Value | Count |
+|---|---|
+| Research | 22 |
+| Residence Hall | 17 |
+| Office | 17 |
+| Mixed Use | 7 |
+| Instruction | 6 |
+| Administration | 5 |
+| Recreation | 5 |
+| Library | 4 |
+| Parking Garage | 4 |
+| Power Plant | 3 |
+| Multifamily | 2 |
+| *(NULL)* | 8 |
 
-域里还定义了 `Dormitory`、`Parking`、`Storage` 等值，但当前数据里没出现。
-**这个域的 code 和 name 相同**，直接显示即可，不用查表。
+The domain also defines `Dormitory`, `Parking` and `Storage`, which do not
+occur in the current data. **Code and name are identical in this domain** —
+display it directly, no lookup needed.
 
-### Pathways.pathway_type — 路径类型（数值码，必须查表）
+### `Pathways.pathway_type` — numeric, lookup required
 
-| 代码 | 名称 | 实际条数 |
+| Code | Name | Count |
 |---|---|---|
 | 1 | Hallway / Sidewalk | 1900 |
 | 2 | Stairs / Curb | 191 |
@@ -219,65 +234,77 @@ Levels: LEVEL_ID, NAME, NAME_SHORT, LEVEL_NUMBER, FACILITY_ID,
 | 5 | Escalator | 0 |
 | 6 | Moving Walkway | 0 |
 
-### Pathways.travel_direction
+### `Pathways.travel_direction`
 
-| 代码 | 名称 |
+| Code | Name |
 |---|---|
 | 1 | Both Directions Allowed |
 | 2 | From-To Allowed |
 | 3 | To-From Allowed |
 
-### Pathways.pathway_rank
+Populated on 338 of 2146 rows, and only ever `1`, so nothing is actually
+one-way today.
 
-| 代码 | 名称 |
+### `Pathways.pathway_rank`
+
+| Code | Name |
 |---|---|
 | 1 | Primary |
 | 2 | Secondary |
 | 3 | Tertiary |
 
-### Pathways.location_class — 室内外判定（做室内高亮用这个）
+`1` on 2142 of 2146 rows — effectively a constant. Anything derived from it is
+a constant too.
 
-| 代码 | 名称 | 实际条数 |
-|---|---|---|
-| Exterior | Exterior | 1391 |
-| Interior | Interior | 85 |
-| Semi_Enclosed | Semi-Enclosed | 37 |
-| Covered_Exterior | Covered Exterior | 35 |
-| Elevated | Elevated | 5 |
-| Underground | Underground | 2 |
-| *(NULL)* | 未填 | 591 |
-| Other | Other | 0 |
+### `Pathways.location_class` — indoor/outdoor
 
-### Pathways.ihcd2021routesurveycode — 无障碍评级
+| Value | Count |
+|---|---|
+| Exterior | 1391 |
+| Interior | 85 |
+| Semi_Enclosed | 37 |
+| Covered_Exterior | 35 |
+| Elevated | 5 |
+| Underground | 2 |
+| *(NULL)* | 591 |
+| Other | 0 |
 
-| 代码 | 名称 |
+Note the underscores. A filter written as `'Covered Exterior'` matches nothing,
+and a `<>` comparison against a NULL-heavy column drops every NULL row.
+
+### `Pathways.ihcd2021routesurveycode` — the accessibility grade
+
+| Code | Name |
 |---|---|
 | FullyCompliant | Compliant Accessible Route |
 | PartiallyCompliant | Partially Compliant |
 | NonCompliant | May Have Travel Hazards |
 | Other | Other |
 
-对应路径服务的三种 travel mode：`Fully Accesible Pathway`、
-`Partially Accessible Pathway`、`Walking`（官方拼写有误，照抄）。
+Populated on all 2146 rows: 881 / 533 / 732. This is the one real
+accessibility signal in the dataset, and it maps to the three travel modes of
+JHU's own routing service: `Fully Accesible Pathway`,
+`Partially Accessible Pathway`, `Walking` (the misspelling is theirs — copy it
+verbatim if you call that service).
 
-### Pathways.pathdisplay
+### `Pathways.pathdisplay`
 
-| 代码 | 名称 |
+| Code | Name |
 |---|---|
 | Building_Center_Path | Building Center Path |
 | Block | Block |
 | Hidden | Hidden |
 
-当前 2146 行全为 NULL。
+NULL on all 2146 rows.
 
-### Pathways.suffix_type
+### `Pathways.suffix_type`
 
-`Hallway` / `Sidewalk` / `Stairs` / `Curb` / `Ramp` / `Curb Ramp` /
-`Elevator` / `Wheelchair Lift` / `Escalator` —— code 与 name 相同。
+`Hallway` / `Sidewalk` / `Stairs` / `Curb` / `Ramp` / `Curb Ramp` / `Elevator` /
+`Wheelchair Lift` / `Escalator` — code and name identical.
 
-### Entryways.geo_level — 出入口所在楼层
+### `Entryways.geo_level` — which floor an entrance is on
 
-| 代码 | 名称 | 实际条数 |
+| Code | Name | Count |
 |---|---|---|
 | -2 | Sub-Basement | 2 |
 | -1 | Basement | 28 |
@@ -287,51 +314,70 @@ Levels: LEVEL_ID, NAME, NAME_SHORT, LEVEL_NUMBER, FACILITY_ID,
 | 3 | 3rd Floor | 7 |
 | 4 | 4th Floor | 1 |
 
-### Entryways 的 Y/N 布尔字段
+### Entryways Y/N booleans
 
-`accessible_entrance`、`automatic_door`、`magnetic_swipe`、`isa_sign`
-—— 域都是 `Y=Yes; N=No`。实测 `accessible_entrance`：Y 89 / N 248。
+`accessible_entrance`, `automatic_door`, `magnetic_swipe`, `isa_sign` — all
+`Y=Yes; N=No`. Measured: `accessible_entrance` is Y on 89, N on 248.
 
-`Entryways.use_type` 332/337 为 NULL，剩 5 条是 `Not on Accessible Route`，基本不可用。
+`Entryways.use_type` is NULL on 332 of 337; the remaining 5 say
+`Not on Accessible Route`. Effectively unusable.
 
-### Landmarks.landmark_type
+### `Landmarks.landmark_type`
 
-| 代码 | 名称 | 实际条数 |
-|---|---|---|
-| Elevator | Elevator | 14 |
-| Quad | Quad | 6 |
-| Tunnel Entrance | Tunnel Entrance | 2 |
-| Art Installation | Art Installation | 0 |
-| Other | Other | 0 |
+| Value | Count |
+|---|---|
+| Elevator | 14 |
+| Quad | 6 |
+| Tunnel Entrance | 2 |
+| Art Installation | 0 |
+| Other | 0 |
 
-### Facilities / Exterior Spaces `.below_grade`
+### `Facilities` / `Exterior Spaces` `.below_grade`
 
-`Y=Yes; N=No`。
+`Y=Yes; N=No`.
 
-### 所有图层的 `validationstatus`
+### `validationstatus`, every layer
 
-AIIM 内部的数据校验位（0–7 的位掩码，`0 = 无错误`）。前端忽略即可。
+An AIIM internal validation bitmask, 0–7, where `0` means no error. Ignore it
+in the frontend.
 
 ---
 
-## 6. 前端使用提示
+## 6. What this data does **not** contain
 
-- 建筑面 + 建筑名：`Facilities.geojson`，`name` + `primary_use`，1:50000 起显示，1:2000 起标注。
-- 搜索建议索引：`Facilities.name` + `name_alias` + `address` + `Exterior_Spaces.name` +
-  `Entryways.entrance_name`。
-- 楼层切换：用 `vertical_order`（Pathways/Elevators/Landmarks）和 `geo_level`（Entryways）
-  这两个整数，取值范围 -2 ~ 4。
-- 室内路段高亮：`Pathways.location_class IN ('Interior','Underground')`。
-- 施工避让：`Polygon_Barriers.geojson`，`expected_end_date` 是毫秒时间戳，有 3 条为 NULL（长期封闭）。
-- Entryways / Elevators 关联建筑必须自己做空间计算，服务里的 `facility_id` 没填。
+Worth stating plainly, because it determines what the app can honestly claim.
+The Pathways layer has 30 fields, and **none of them is slope, roughness,
+surface, lighting or security**. There is no elevation anywhere in the dataset
+(`hasZ` is false).
 
-## 7. 复跑
+Anything presenting those as measurements is presenting an inference. Where
+this app needs them, the columns are null and the route says so.
+
+---
+
+## 7. Notes for the frontend
+
+- Building fills and names: `Facilities.geojson`, `name` + `primary_use`;
+  visible from 1:50000, labelled from 1:2000.
+- Search index: `Facilities.name` + `name_alias` + `address` +
+  `Exterior_Spaces.name` + `Entryways.entrance_name`.
+- Floor switching: the `vertical_order` integer (Pathways / Elevators /
+  Landmarks) and `geo_level` (Entryways), range -2 to 4.
+- Highlighting indoor segments: `location_class IN ('Interior','Underground')`.
+- Construction avoidance: `Polygon_Barriers.geojson`. `expected_end_date` is a
+  millisecond timestamp, NULL on 3 of the 7 (indefinite closures).
+- Linking Entryways or Elevators to buildings needs a spatial computation; the
+  service's `facility_id` is not filled in.
+
+## 8. Re-running the export
 
 ```bash
-python3 indoors_dump.py --defs-only          # 只看结构，不下要素
-python3 indoors_dump.py                      # 全量，约 2900 要素，3.3 MB
-python3 indoors_dump.py --only Facilities    # 单图层（不覆盖 csv/index）
-python3 indoors_dump.py --apply-filters      # 套用 web map 的 definitionExpression
+python3 scripts/indoors_dump.py --defs-only       # schema only, no features
+python3 scripts/indoors_dump.py                   # everything, ~2900 features, 3.3 MB
+python3 scripts/indoors_dump.py --only Facilities # one layer (leaves csv/index alone)
+python3 scripts/indoors_dump.py --apply-filters   # apply the web map's definitionExpression
 ```
 
-导出目录已加入 `.gitignore`。
+The output directory is gitignored; the files under `frontend/public/data/`
+were copied from it. The upstream is someone else's production service — do not
+put this in a development loop.

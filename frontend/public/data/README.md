@@ -1,24 +1,26 @@
 # Campus data
 
-JHU Homewood 官方室内/室外地图数据，从 ArcGIS Enterprise 导出。
-Vite 会把这个目录按原路径静态服务，前端用 `fetch('/data/Facilities.geojson')` 取。
+JHU Homewood's published indoor/outdoor map data, exported from their ArcGIS
+Enterprise portal. Vite serves this directory as-is, so the frontend fetches
+`/data/Facilities.geojson` and the backend's seed builder reads the same files.
 
-坐标 WGS84 经纬度 (EPSG:4326)，精度截断到 6 位小数（约 11cm）。
+Coordinates are WGS84 (EPSG:4326), truncated to 6 decimals (about 11 cm).
 
-| 文件 | 几何 | 要素数 | 说明 |
+| File | Geometry | Features | What it is |
 |---|---|---|---|
-| `Facilities.geojson` | Polygon | 100 | 建筑轮廓，`name` / `primary_use` |
-| `Pathways.geojson` | LineString | 2146 | 路网，带官方无障碍评级 `ihcd2021routesurveycode` |
-| `Entryways-All.geojson` | Point | 337 | 出入口，`accessible_entrance` = Y/N |
-| `Exterior_Spaces.geojson` | Polygon | 16 | 室外命名空间（Quad 等） |
-| `Landmarks.geojson` | Point | 22 | 地标 |
-| `Elevators.geojson` | Point | 15 | 电梯 |
-| `Polygon_Barriers.geojson` | Polygon | 7 | 施工封闭区 |
-| `Sites.geojson` | Polygon | 1 | 校区边界 |
-| `_index.json` | — | — | 导出元数据（来源 URL、几何类型、要素数） |
+| `Facilities.geojson` | Polygon | 100 | Building footprints, with `name` and `primary_use` |
+| `Pathways.geojson` | LineString | 2146 | The path network, carrying JHU's own accessibility grade in `ihcd2021routesurveycode` |
+| `Entryways-All.geojson` | Point | 337 | Entrances; `accessible_entrance` is Y or N |
+| `Exterior_Spaces.geojson` | Polygon | 16 | Named outdoor spaces — the quads |
+| `Landmarks.geojson` | Point | 22 | Landmarks |
+| `Elevators.geojson` | Point | 15 | Lifts |
+| `Polygon_Barriers.geojson` | Polygon | 7 | Construction closures |
+| `Sites.geojson` | Polygon | 1 | Campus boundary |
+| `_index.json` | — | — | Export metadata: source URLs, geometry types, feature counts |
 
-**字段含义、编码域、图层间外键关系见 [`docs/CAMPUS_DATA.md`](../../../docs/CAMPUS_DATA.md)。**
-先读那份再写代码，有几个外键和文档预期不一致。
+**Read [`docs/CAMPUS_DATA.md`](../../../docs/CAMPUS_DATA.md) before writing code
+against these fields.** Several foreign keys do not behave the way the AIIM
+documentation says they do.
 
-数据由 `scripts/indoors_dump.py` 生成，可重跑。上游是别人的生产服务，
-不要在开发循环里反复请求。
+Regenerate with `scripts/indoors_dump.py`. That script talks to someone else's
+production service, so do not put it in a development loop.
