@@ -30,6 +30,7 @@ from .core import (
     UPLOAD_DIR,
     VERIFIED_PATH_ID,
     get_db,
+    hazard_evidence,
     initialize_database,
     new_tracking_code,
     utcnow,
@@ -215,7 +216,7 @@ def serialize_hazard(hazard: Hazard) -> dict:
         "active": hazard.active,
         "verified": hazard.verified,
         "verified_at": hazard.verified_at,
-        "evidence": json.loads(hazard.evidence or "[]"),
+        "evidence": hazard_evidence(hazard),
         "active_when": getattr(hazard, "active_when", "always") or "always",
         "robot_note": getattr(hazard, "robot_note", "") or "",
     }
@@ -415,7 +416,7 @@ def graph_overlay(db: Annotated[Session, Depends(get_db)]) -> dict:
                 "verified": h.verified, "description": h.description,
                 "active_when": getattr(h, "active_when", "always") or "always",
                 "robot_note": getattr(h, "robot_note", "") or "",
-                "evidence": json.loads(h.evidence or "[]"),
+                "evidence": hazard_evidence(h),
             }
             for h in hazards
         ],
@@ -432,7 +433,7 @@ def hazard_detail(hazard_id: str, db: Annotated[Session, Depends(get_db)]) -> di
         "severity": hazard.severity, "kind": hazard.kind, "edge_id": hazard.edge_id,
         "latitude": hazard.latitude, "longitude": hazard.longitude, "active": hazard.active,
         "verified": hazard.verified, "verified_at": hazard.verified_at,
-        "evidence": json.loads(hazard.evidence or "[]"),
+        "evidence": hazard_evidence(hazard),
         "active_when": getattr(hazard, "active_when", "always") or "always",
         "robot_note": getattr(hazard, "robot_note", "") or "",
     }
@@ -877,9 +878,11 @@ async def upload_verified_hazard_evidence(
     filename = f"{hazard_id}-{secrets.token_hex(4)}{ALLOWED_IMAGES[image.content_type]}"
     destination = UPLOAD_DIR / filename
     destination.write_bytes(content)
-    evidence = json.loads(hazard.evidence or "[]")
-    evidence.append(f"/uploads/{filename}")
-    hazard.evidence = json.dumps(evidence)
+    for old in hazard_evidence(hazard):
+        previous = UPLOAD_DIR / Path(old).name
+        if previous.exists() and previous.resolve().parent == UPLOAD_DIR.resolve():
+            previous.unlink()
+    hazard.evidence = json.dumps([f"/uploads/{filename}"])
     db.commit()
     return serialize_hazard(hazard)
 

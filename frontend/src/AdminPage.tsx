@@ -45,7 +45,7 @@ function toMapHazard(hazard: VerifiedHazard): Hazard {
     severity: hazard.severity >= 3 ? 'high' : hazard.severity === 2 ? 'medium' : 'low',
     coordinates: [hazard.latitude, hazard.longitude],
     verified: hazard.verified,
-    evidence: hazard.evidence.map((path) => (path.startsWith('http') ? path : `${API_ORIGIN}${path}`)),
+    evidence: [...new Set(hazard.evidence)].map((path) => (path.startsWith('http') ? path : `${API_ORIGIN}${path}`)),
     robotNote: hazard.robot_note,
     activeWhen: hazard.active_when,
     kind: hazard.kind,

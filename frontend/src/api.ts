@@ -192,7 +192,7 @@ export const api = {
         hazard.longitude ?? coordinates[0][1],
       ],
       verified: hazard.verified ?? false,
-      evidence: hazard.evidence?.map((path) => path.startsWith('http') ? path : `${API_ORIGIN}${path}`),
+      evidence: [...new Set(hazard.evidence || [])].map((path) => (path.startsWith('http') ? path : `${API_ORIGIN}${path}`)),
       robotNote: hazard.robot_note,
       activeWhen: hazard.active_when,
     }))

@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .core import VERIFIED_PATH_ID, GraphEdge, GraphNode, Hazard, Landmark, LandmarkDoor
+from .core import VERIFIED_PATH_ID, GraphEdge, GraphNode, Hazard, Landmark, LandmarkDoor, hazard_evidence
 
 
 STOPWORDS = {"the", "and", "for", "building", "hall", "center", "centre", "house"}
@@ -420,8 +420,8 @@ def route_from_verified_edge(
     target = nodes[edge.from_node if reversed_path else edge.to_node]
     geometry = _edge_line(edge, origin, target, reversed_path)
     hazards = [
-        hazard for hazard in db.scalars(select(Hazard).where(Hazard.edge_id == edge.id, Hazard.active.is_(True))).all()
-        if hazard_applies(hazard, nighttime)
+        hazard
+        for hazard in db.scalars(select(Hazard).where(Hazard.edge_id == edge.id, Hazard.active.is_(True))).all()
     ]
     start_place = db.get(Landmark, edge.from_place) if edge.from_place else None
     end_place = db.get(Landmark, edge.to_place) if edge.to_place else None
@@ -486,7 +486,7 @@ def route_from_verified_edge(
                 "longitude": hazard.longitude,
                 "verified": hazard.verified,
                 "verified_at": hazard.verified_at,
-                "evidence": json.loads(hazard.evidence or "[]"),
+                "evidence": hazard_evidence(hazard),
                 "active_when": getattr(hazard, "active_when", "always") or "always",
                 "robot_note": getattr(hazard, "robot_note", "") or "",
             }
@@ -525,7 +525,7 @@ def compute_route(
     hazards = db.scalars(select(Hazard).where(Hazard.active.is_(True))).all()
     hazards_by_edge: dict[str, list[Hazard]] = {}
     for hazard in hazards:
-        if hazard.edge_id and hazard_applies(hazard, nighttime):
+        if hazard.edge_id:
             hazards_by_edge.setdefault(hazard.edge_id, []).append(hazard)
 
     graph: dict[str, list[Arc]] = {node_id: [] for node_id in nodes}
@@ -553,7 +553,10 @@ def compute_route(
         if current_cost != distances.get(current):
             continue
         for arc in graph.get(current, []):
-            severity = max((h.severity for h in hazards_by_edge.get(arc.edge.id, [])), default=0)
+            severity = max(
+                (h.severity for h in hazards_by_edge.get(arc.edge.id, []) if hazard_applies(h, nighttime)),
+                default=0,
+            )
             cost = edge_cost(arc.edge, mode, nighttime, severity)
             candidate = current_cost + cost
             if candidate < distances.get(arc.target, math.inf):
@@ -693,7 +696,7 @@ def compute_route(
         )
     if avoid_edges:
         explanations.append(f"Avoided {len(avoid_edges)} user-selected edge(s).")
-    if route_hazards:
+    if any(hazard_applies(hazard, nighttime) for hazard in route_hazards):
         explanations.append("Applied active hazard penalties.")
     if verified_m < distance_m:
         explanations.append("Unverified segments remain usable and are disclosed rather than treated as unsafe.")
@@ -748,7 +751,7 @@ def compute_route(
                 "longitude": hazard.longitude,
                 "verified": hazard.verified,
                 "verified_at": hazard.verified_at,
-                "evidence": json.loads(hazard.evidence or "[]"),
+                "evidence": hazard_evidence(hazard),
                 "active_when": getattr(hazard, "active_when", "always") or "always",
                 "robot_note": getattr(hazard, "robot_note", "") or "",
             }

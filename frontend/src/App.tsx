@@ -383,7 +383,11 @@ function MainMapPage() {
                       <CircleAlert size={18} />
                       <span>
                         <strong>{hazard.title}</strong>
-                        <small>{hazard.verified ? 'Robot verified demo observation' : 'Unverified report'} · {hazard.description}</small>
+                        <small>
+                          {hazard.verified ? 'Robot verified demo observation' : 'Unverified report'}
+                          {hazard.activeWhen && hazard.activeWhen !== 'always' ? ` · ${hazard.activeWhen === 'night' ? 'Applies at night' : 'Applies during the day'}` : ''}
+                          {' · '}{hazard.description}
+                        </small>
                         {hazard.evidence?.map((source) => (
                           <img key={source} className="route-caution-evidence" src={source} alt={`Demo robot evidence for ${hazard.title}`} />
                         ))}

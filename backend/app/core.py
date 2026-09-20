@@ -44,6 +44,25 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def hazard_evidence(hazard: Hazard | None) -> list[str]:
+    """One photo per caution. Saving twice used to append a second copy."""
+    if hazard is None:
+        return []
+    try:
+        items = json.loads(hazard.evidence or "[]")
+    except json.JSONDecodeError:
+        return []
+    if isinstance(items, str):
+        items = [items]
+    if not isinstance(items, list):
+        return []
+    paths: list[str] = []
+    for item in items:
+        if isinstance(item, str) and item and item not in paths:
+            paths.append(item)
+    return paths[-1:]
+
+
 class Base(DeclarativeBase):
     pass
 

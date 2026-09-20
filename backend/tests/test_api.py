@@ -412,6 +412,14 @@ def test_admin_can_draw_one_verified_path_and_add_a_hazard(client):
     listed = client.get("/api/admin/verified-path", headers=headers).json()["path"]
     assert len(listed["hazards"]) == 1
 
+    daytime = route(client, "Malone Hall", "Clark Hall")
+    assert daytime["edge_ids"] == ["e-robot-verified"]
+    assert daytime["hazards"][0]["title"] == "Crack in the paver"
+    assert daytime["hazards"][0]["active_when"] == "night"
+
+    nighttime = route(client, "Malone Hall", "Clark Hall", nighttime=True)
+    assert nighttime["hazards"][0]["title"] == "Crack in the paver"
+
     deleted = client.delete("/api/admin/verified-path", headers=headers)
     assert deleted.status_code == 200
     assert deleted.json()["path"] is None
