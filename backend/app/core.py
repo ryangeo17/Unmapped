@@ -237,19 +237,30 @@ def ensure_schema() -> None:
     """SQLite create_all does not add new columns to existing tables."""
     if not DATABASE_URL.startswith("sqlite"):
         return
+    extras = {
+        "graph_edges": [
+            ("geometry", "TEXT DEFAULT '[]'"),
+            ("from_place", "VARCHAR(64)"),
+            ("to_place", "VARCHAR(64)"),
+            ("grade", "VARCHAR(30)"),
+            ("riser_count", "INTEGER DEFAULT 0"),
+            ("kind", "VARCHAR(20) DEFAULT 'paved'"),
+            ("space", "VARCHAR(80)"),
+            ("name", "VARCHAR(120)"),
+        ],
+        "hazards": [
+            ("active_when", "VARCHAR(20) DEFAULT 'always'"),
+            ("robot_note", "TEXT DEFAULT ''"),
+        ],
+    }
     with engine.begin() as connection:
-        edges = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(graph_edges)").fetchall()}
-        if edges and "geometry" not in edges:
-            connection.exec_driver_sql("ALTER TABLE graph_edges ADD COLUMN geometry TEXT DEFAULT '[]'")
-        if edges and "from_place" not in edges:
-            connection.exec_driver_sql("ALTER TABLE graph_edges ADD COLUMN from_place VARCHAR(64)")
-        if edges and "to_place" not in edges:
-            connection.exec_driver_sql("ALTER TABLE graph_edges ADD COLUMN to_place VARCHAR(64)")
-        hazards = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(hazards)").fetchall()}
-        if hazards and "active_when" not in hazards:
-            connection.exec_driver_sql("ALTER TABLE hazards ADD COLUMN active_when VARCHAR(20) DEFAULT 'always'")
-        if hazards and "robot_note" not in hazards:
-            connection.exec_driver_sql("ALTER TABLE hazards ADD COLUMN robot_note TEXT DEFAULT ''")
+        for table, columns in extras.items():
+            existing = {row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()}
+            if not existing:
+                continue
+            for name, ddl in columns:
+                if name not in existing:
+                    connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def initialize_database() -> None:

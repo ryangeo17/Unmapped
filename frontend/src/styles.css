@@ -138,7 +138,7 @@ h1, h2, h3, .brand strong { font-family: 'Manrope', sans-serif; color: var(--nav
 .map-pin--person { background: #1476e6; border-radius: 50%; font-size: 15px; line-height: 1; padding-left: 1px; animation: pulse 2s infinite; }
 .map-pin { text-indent: 0; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(20,118,230,.15); } }
-.mapbox-3d-toggle { position: absolute; z-index: 5; top: 14px; right: 14px; min-height: 38px; padding: 0 13px; border: 1px solid rgba(9,55,105,.22); border-radius: 9px; background: rgba(255,255,255,.94); color: var(--navy); box-shadow: var(--shadow); font-weight: 800; }
+.mapbox-3d-toggle { position: absolute; z-index: 20; top: 14px; right: 14px; min-height: 38px; padding: 0 13px; border: 1px solid rgba(9,55,105,.22); border-radius: 9px; background: rgba(255,255,255,.94); color: var(--navy); box-shadow: var(--shadow); font-weight: 800; }
 .mapbox-hazard { width: 28px; height: 28px; border: 3px solid #fff; border-radius: 50%; background: #facc15; color: #5c3a00; box-shadow: 0 3px 10px rgba(0,0,0,.28); font-weight: 900; }
 .mapbox-hazard--high { background: #fb923c; color: #702b00; }
 .mapbox-popup-evidence { display: block; width: 100%; max-height: 135px; margin: 8px 0; border-radius: 8px; object-fit: cover; }

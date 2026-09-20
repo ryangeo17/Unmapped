@@ -156,6 +156,8 @@ export default function MapView({
   clickState.current = { suggestionMode, onSuggestionPoint, onMapClick }
   const overlayRef = useRef({ showGraph, showCampus })
   overlayRef.current = { showGraph, showCampus }
+  const appearanceRef = useRef({ nighttime, threeDimensional, navigationActive })
+  appearanceRef.current = { nighttime, threeDimensional, navigationActive }
 
   useEffect(() => {
     if (!containerRef.current || !MAPBOX_TOKEN || mapRef.current) return
@@ -342,13 +344,51 @@ export default function MapView({
     }
   }, [recenterToken])
 
+  // Mapbox Standard often keeps isStyleLoaded() false after the first paint, so
+  // Day/Night and 2D/3D must not wait on that flag. Re-apply after style.load
+  // because changing lightPreset can rebuild the basemap.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    const updateLighting = () => map.setConfigProperty('basemap', 'lightPreset', nighttime ? 'night' : 'day')
-    if (map.isStyleLoaded()) updateLighting()
-    else map.once('style.load', updateLighting)
-  }, [nighttime])
+    let cancelled = false
+    let retry: number | undefined
+    let tries = 0
+    const apply = () => {
+      if (cancelled) return
+      try {
+        const { nighttime: night, threeDimensional: is3d, navigationActive: nav } = appearanceRef.current
+        const preset = night ? 'night' : 'day'
+        const currentPreset = map.getConfigProperty('basemap', 'lightPreset')
+        if (currentPreset !== preset) {
+          map.setConfigProperty('basemap', 'lightPreset', preset)
+        }
+        const current3d = map.getConfigProperty('basemap', 'show3dObjects')
+        if (current3d !== is3d) {
+          map.setConfigProperty('basemap', 'show3dObjects', is3d)
+        }
+        if (!nav) {
+          map.easeTo({
+            pitch: is3d ? 62 : 0,
+            bearing: is3d ? -18 : 0,
+            duration: 650,
+          })
+        }
+      } catch {
+        if (tries >= 20) return
+        tries += 1
+        retry = window.setTimeout(apply, 200)
+      }
+    }
+    apply()
+    map.on('style.load', apply)
+    map.once('idle', apply)
+    return () => {
+      cancelled = true
+      if (retry !== undefined) window.clearTimeout(retry)
+      map.off('style.load', apply)
+      map.off('idle', apply)
+    }
+  }, [nighttime, threeDimensional])
 
   useEffect(() => {
     const map = mapRef.current
@@ -453,9 +493,7 @@ export default function MapView({
   }, [route, currentPosition, avoidedHazards, onAvoidHazard, threeDimensional, navigationActive, editableHazards, selectedHazardId, onHazardClick, suggestionPoints, verifiedPath])
 
   function toggleDimension() {
-    const next = !threeDimensional
-    setThreeDimensional(next)
-    mapRef.current?.easeTo({ pitch: next ? 62 : 0, bearing: next ? -18 : 0, duration: 650 })
+    setThreeDimensional((current) => !current)
   }
 
   if (!MAPBOX_TOKEN) {
