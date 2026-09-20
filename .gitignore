@@ -1,5 +1,5 @@
 .DS_Store
-# .env is committed so Vercel can build with the public Mapbox token
+.env
 *.db
 *.sqlite
 *.sqlite3
